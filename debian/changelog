@@ -1,0 +1,5 @@
+openstack-doc-tools (0.6-1) unstable; urgency=medium
+
+  * Initial release (Closes: #XXXXXX).
+
+ -- Thomas Goirand <zigo@debian.org>  Sat, 08 Feb 2014 21:18:52 +0800

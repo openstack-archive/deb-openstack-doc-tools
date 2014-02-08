@@ -1,0 +1,3 @@
+version=3
+opts="uversionmangle=s/^201.*/0.0.0/" \
+https://github.com/openstack/openstack-doc-tools/tags .*/(\d[\d\.]+)\.tar\.gz

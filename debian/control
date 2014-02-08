@@ -1,0 +1,35 @@
+Source: openstack-doc-tools
+Section: python
+Priority: extra
+Maintainer: PKG OpenStack <openstack-devel@lists.alioth.debian.org>
+Uploaders: Julien Danjou <acid@debian.org>,
+           Thomas Goirand <zigo@debian.org>,
+           Ghe Rivero <ghe.rivero@stackops.com>
+Build-Depends: debhelper (>= 9),
+               openstack-pkg-tools,
+               python-all (>= 2.6.6-3~),
+               python-pbr (>= 0.5.21)
+Build-Depends-Indep: python-hacking (>= 0.8.0),
+                     python-lxml,
+                     python-oslo.config,
+                     python-sphinx
+Standards-Version: 3.9.5
+Homepage: https://github.com/openstack/openstack-doc-tools
+Vcs-Git: git://anonscm.debian.org/openstack/openstack-doc-tools.git
+Vcs-Browser: http://anonscm.debian.org/gitweb/?p=openstack/openstack-doc-tools.git;a=summary
+
+Package: openstack-doc-tools
+Architecture: all
+Pre-Depends: dpkg (>= 1.15.6~)
+Depends: libxml2-dev,
+         libxslt-dev,
+         maven,
+         python-lxml,
+         python-oslo.config,
+         ${misc:Depends},
+         ${python:Depends},
+         ${sphinxdoc:Depends}
+Description: tools used by the OpenStack Documentation project
+ This package contains a set of tools used to build the OpenStack documentation
+ (install-guide, etc.) in multiple formats: html, pdf, etc. The input format is
+ a set of XML documents.

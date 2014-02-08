@@ -1,0 +1,23 @@
+#!/usr/bin/make -f
+
+include /usr/share/openstack-pkg-tools/pkgos.make
+export OSLO_PACKAGE_VERSION=$(VERSION)
+
+%:
+	dh $@ --buildsystem=python_distutils --with python2,sphinxdoc
+
+override_dh_clean:
+	dh_clean -O--buildsystem=python_distutils
+	rm -rf doc/build
+
+override_dh_sphinxdoc:
+ifeq (,$(findstring nodocs, $(DEB_BUILD_OPTIONS)))
+	sphinx-build -b html doc/source $(CURDIR)/debian/openstack-doc-tools/usr/share/doc/openstack-doc-tools/html
+	dh_sphinxdoc -O--buildsystem=python_distutils
+endif
+
+override_dh_installman:
+ifeq (,$(findstring nodocs, $(DEB_BUILD_OPTIONS)))
+	sphinx-build -b man doc/source doc/build/man
+	dh_installman -O--buildsystem=python_distutils
+endif
