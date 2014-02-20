@@ -10,6 +10,11 @@ override_dh_clean:
 	dh_clean -O--buildsystem=python_distutils
 	rm -rf doc/build
 
+override_dh_auto_install:
+	dh_auto_install -O--buildsystem=python_distutils
+	rm $(CURDIR)/debian/openstack-doc-tools/usr/bin/generatepot
+	rm $(CURDIR)/debian/openstack-doc-tools/usr/bin/generatedocbook
+
 override_dh_sphinxdoc:
 ifeq (,$(findstring nodocs, $(DEB_BUILD_OPTIONS)))
 	sphinx-build -b html doc/source $(CURDIR)/debian/openstack-doc-tools/usr/share/doc/openstack-doc-tools/html
