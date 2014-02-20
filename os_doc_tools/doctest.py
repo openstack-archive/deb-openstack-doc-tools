@@ -32,6 +32,7 @@ Requires:
 
 '''
 
+import gzip
 import multiprocessing
 import os
 import re
@@ -46,14 +47,17 @@ from oslo.config import cfg
 
 
 # These are files that are known to not be in DocBook format.
-# Add values via --exceptions-file
+# Add values via --file-exceptions
 FILE_EXCEPTIONS = []
 
 # These are books that we aren't checking yet
 BOOK_EXCEPTIONS = []
 
-# Mappings from books to directories
+# Mappings from books to build directories under target
 BOOK_MAPPINGS = {}
+
+# Mappings from books to publish directories
+BOOK_PUBLISH_MAPPINGS = {}
 
 RESULTS_OF_BUILDS = []
 
@@ -73,11 +77,16 @@ KNOWN_AUDIENCE_VALUES = ["enduser",
                          "installer",
                          "webpage"]
 
-BASE_RNG = os.path.join(os.path.dirname(__file__), 'resources/')
+os_doc_tools_dir = os.path.dirname(__file__)
+# NOTE(jaegerandi): BASE_RNG needs to end with '/', otherwise
+# the etree.parse call in get_wadl_schema will fail.
+BASE_RNG = os.path.join(os_doc_tools_dir, 'resources/')
 RACKBOOK_RNG = os.path.join(BASE_RNG, 'rackbook.rng')
 DOCBOOKXI_RNG = os.path.join(BASE_RNG, 'docbookxi.rng')
 WADL_RNG = os.path.join(BASE_RNG, 'wadl.rng')
 WADL_XSD = os.path.join(BASE_RNG, 'wadl.xsd')
+
+SCRIPTS_DIR = os.path.join(os_doc_tools_dir, 'scripts')
 
 
 # NOTE(berendt): check_output as provided in Python 2.7.5 to make script
@@ -638,34 +647,51 @@ def publish_www():
     shutil.copytree(source, www_path)
 
 
+def ignore_most_xml(path, names):
+    f = [n for n in names if n.endswith('.xml') and n != 'atom.xml']
+    return f
+
+
 def publish_book(publish_path, book):
     """Copy generated files to publish_path."""
 
     # Assumption: The path for the book is the same as the name of directory
     # the book is in. We need to special case any exceptions.
 
-    if cfg.CONF.language:
-        book_path = os.path.join(publish_path, cfg.CONF.language, book)
-    else:
-        book_path = os.path.join(publish_path, book)
+    # Publishing directory
+    book_path = publish_path
 
-    # Note that shutil.copytree does not allow an existing target directory,
-    # thus delete it.
-    shutil.rmtree(book_path, ignore_errors=True)
+    if cfg.CONF.language:
+        book_path = os.path.join(book_path, cfg.CONF.language)
 
     if os.path.isdir(os.path.join('target/docbkx/webhelp', book)):
         source = os.path.join('target/docbkx/webhelp', book)
     elif os.path.isdir(os.path.join('target/docbkx/webhelp/local', book)):
         source = os.path.join('target/docbkx/webhelp/local', book)
+        book_path = os.path.join(book_path, 'local')
     elif os.path.isdir(os.path.join('target/docbkx/webhelp/',
                                     cfg.CONF.release_path, book)):
         source = os.path.join('target/docbkx/webhelp/',
                               cfg.CONF.release_path, book)
+        book_path = os.path.join(book_path, cfg.CONF.release_path)
     elif (book in BOOK_MAPPINGS):
         source = BOOK_MAPPINGS[book]
 
+    if book in BOOK_PUBLISH_MAPPINGS:
+        book_publish_dir = BOOK_PUBLISH_MAPPINGS[book]
+    else:
+        book_publish_dir = book
+
+    book_path = os.path.join(book_path, book_publish_dir)
+    if cfg.CONF.debug:
+        print("Uploading book %s to %s" % (book, book_path))
+
+    # Note that shutil.copytree does not allow an existing target directory,
+    # thus delete it.
+    shutil.rmtree(book_path, ignore_errors=True)
+
     shutil.copytree(source, book_path,
-                    ignore=shutil.ignore_patterns('*.xml'))
+                    ignore=ignore_most_xml)
 
 
 def ensure_exists(program):
@@ -677,7 +703,7 @@ def ensure_exists(program):
         sys.exit(1)
 
 
-def build_book(book, publish_path):
+def build_book(book, publish_path, log_path):
     """Build book(s) in directory book."""
 
     # Note that we cannot build in parallel several books in the same
@@ -690,6 +716,12 @@ def build_book(book, publish_path):
     base_book_orig = base_book
     comments = "-Dcomments.enabled=%s" % cfg.CONF.comments_enabled
     release = "-Drelease.path.name=%s" % cfg.CONF.release_path
+    if cfg.CONF.language:
+        out_filename = ("build-" + cfg.CONF.language + "-" + base_book +
+                        ".log.gz")
+    else:
+        out_filename = "build-" + base_book + ".log.gz"
+    out_file = gzip.open(os.path.join(log_path, out_filename), 'w')
     try:
         # Clean first and then build so that the output of all guides
         # is available
@@ -697,6 +729,7 @@ def build_book(book, publish_path):
             ["mvn", "clean"],
             stderr=subprocess.STDOUT
         )
+        out_file.write(output)
         if base_book == "install-guide":
             # Build Debian
             base_book = "install-guide (for debian)"
@@ -706,6 +739,7 @@ def build_book(book, publish_path):
                  "-Doperating.system=apt-debian", "-Dprofile.os=debian"],
                 stderr=subprocess.STDOUT
             )
+            out_file.write(output)
             # Build Fedora
             base_book = "install-guide (for Fedora)"
             output = subprocess.check_output(
@@ -715,6 +749,7 @@ def build_book(book, publish_path):
                  "-Dprofile.os=centos;fedora;rhel"],
                 stderr=subprocess.STDOUT
             )
+            out_file.write(output)
             # Build openSUSE
             base_book = "install-guide (for openSUSE)"
             output = subprocess.check_output(
@@ -723,6 +758,7 @@ def build_book(book, publish_path):
                  "-Doperating.system=zypper", "-Dprofile.os=opensuse;sles"],
                 stderr=subprocess.STDOUT
             )
+            out_file.write(output)
             # Build Ubuntu
             base_book = "install-guide (for Ubuntu)"
             output = subprocess.check_output(
@@ -735,7 +771,7 @@ def build_book(book, publish_path):
             base_book = "install-guide (for Debian, Fedora, openSUSE, Ubuntu)"
         elif base_book == "high-availability-guide":
             output = subprocess.check_output(
-                ["build-ha-guide.sh", ],
+                [os.path.join(SCRIPTS_DIR, 'build-ha-guide.sh'), ],
                 stderr=subprocess.STDOUT
             )
             output = subprocess.check_output(
@@ -744,21 +780,28 @@ def build_book(book, publish_path):
             )
         # Repository: identity-api
         # Let's not check for "v3" but for the full name instead
-        elif base_book.endswith("openstack-identity-api/v3"):
+        elif book.endswith("openstack-identity-api/v3"):
             output = subprocess.check_output(
-                ["markdown-docbook.sh", "identity-api-v3"],
+                [os.path.join(SCRIPTS_DIR, "markdown-docbook.sh"),
+                 "identity-api-v3"],
                 stderr=subprocess.STDOUT
             )
+            out_file.write(output)
+            # File gets generated at wrong directory, we need to move it
+            # around
+            shutil.move("src/markdown/identity-api-v3.xml", ".")
             output = subprocess.check_output(
                 ["mvn", "generate-sources", comments, release, "-B"],
                 stderr=subprocess.STDOUT
             )
         # Repository: image-api
-        elif base_book == "openstack-image-service-api":
+        elif base_book == 'image-api-v2':
             output = subprocess.check_output(
-                ["markdown-docbook.sh", comments, release, "image-api-v2.0"],
+                [os.path.join(SCRIPTS_DIR, "markdown-docbook.sh"),
+                 "image-api-v2.0"],
                 stderr=subprocess.STDOUT
             )
+            out_file.write(output)
             output = subprocess.check_output(
                 ["mvn", "generate-sources", comments, release, "-B"],
                 stderr=subprocess.STDOUT
@@ -769,10 +812,13 @@ def build_book(book, publish_path):
                 stderr=subprocess.STDOUT
             )
     except subprocess.CalledProcessError as e:
+        out_file.write(output)
         output = e.output
         returncode = e.returncode
         result = False
 
+    out_file.write(output)
+    out_file.close()
     publish_book(publish_path, base_book_orig)
     return (base_book, result, output, returncode)
 
@@ -931,6 +977,41 @@ def find_affected_books(rootdir, book_exceptions, file_exceptions,
     return books
 
 
+def generate_index_file():
+    """Generate index.html file in publish_path."""
+
+    publish_path = get_publish_path()
+    if not os.path.isdir(publish_path):
+        os.mkdir(publish_path)
+
+    index_file = open(os.path.join(get_publish_path(), 'index.html'), 'w')
+
+    index_file.write(
+        '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"\n'
+        '"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">\n'
+        '<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">\n'
+        '<body>\n'
+        '<h1>Results of checkbuild</h1>\n')
+
+    for root, dirs, files in os.walk(publish_path):
+
+        dirs[:] = [d for d in dirs if not d in ['common', 'webapp', 'content']]
+
+        # Ignore top-level index.html files
+        if root == publish_path:
+            continue
+
+        if os.path.isfile(os.path.join(root, 'content/index.html')):
+            path = os.path.relpath(root, publish_path)
+            index_file.write('<a href="%s/content/index.html">%s</a>\n' %
+                             (path, path))
+            index_file.write('<br/>\n')
+
+    index_file.write('</body>\n'
+                     '</html>\n')
+    index_file.close()
+
+
 def build_affected_books(rootdir, book_exceptions, file_exceptions,
                          verbose, force=False, ignore_errors=False,
                          ignore_dirs=[]):
@@ -961,10 +1042,14 @@ def build_affected_books(rootdir, book_exceptions, file_exceptions,
     pool = multiprocessing.Pool(maxjobs)
     print("Queuing the following books for building:")
     publish_path = get_publish_path()
+    log_path = get_gitroot()
     for book in sorted(books):
         print("  %s" % os.path.basename(book))
-        pool.apply_async(build_book, (book, publish_path),
-                         callback=logging_build_book)
+        if cfg.CONF.debug:
+            build_book(book, publish_path, log_path)
+        else:
+            pool.apply_async(build_book, (book, publish_path, log_path),
+                             callback=logging_build_book)
     pool.close()
     print("Building all queued %d books now..." % len(books))
     pool.join()
@@ -975,6 +1060,9 @@ def build_affected_books(rootdir, book_exceptions, file_exceptions,
             print(">>> Build of book %s succeeded." % book)
         else:
             any_failures = True
+
+    if cfg.CONF.create_index:
+        generate_index_file()
 
     if any_failures:
         for book, result, output, returncode in RESULTS_OF_BUILDS:
@@ -1027,7 +1115,12 @@ cli_OPTS = [
     cfg.BoolOpt("check-niceness", default=False,
                 help="Check the niceness of files, for example whitespace."),
     cfg.BoolOpt("check-syntax", default=False,
-                help="Check the syntax of modified files"),
+                help="Check the syntax of modified files."),
+    cfg.BoolOpt("create-index", default=True,
+                help="When publishing create an index.html file to find books "
+                "in an easy way."),
+    cfg.BoolOpt('debug', default=False,
+                help="Enable debug code."),
     cfg.BoolOpt('force', default=False,
                 help="Force the validation of all files "
                 "and build all books."),
@@ -1035,8 +1128,6 @@ cli_OPTS = [
                 help="Do not exit on failures."),
     cfg.BoolOpt('verbose', default=False, short='v',
                 help="Verbose execution."),
-    cfg.StrOpt('exceptions-file',
-               help="Ignored, for compatibility only"),
     cfg.MultiStrOpt("file-exception",
                     help="File that will be skipped during validation."),
     cfg.MultiStrOpt("ignore-dir",
@@ -1051,13 +1142,22 @@ cli_OPTS = [
 ]
 
 OPTS = [
-    # NOTE(jaegerandi): books and target-dirs could be a DictOpt
-    # but I could not get this working properly.
+    # NOTE(jaegerandi): books, target-dirs, publish-dir could be a
+    # DictOpt but I could not get this working properly.
     cfg.MultiStrOpt("book", default=None,
-                    help="Name of book that needs special mapping."),
+                    help="Name of book that needs special mapping. "
+                    "This is the name of directory where the pom.xml "
+                    "file lives."),
     cfg.MultiStrOpt("target-dir", default=None,
-                    help="Target directory for a book. The option "
-                    "must be in the same order as the book option."),
+                    help="Directory name in target dir for a book. "
+                    "The option must be in the same order as the book "
+                    "option."),
+    cfg.MultiStrOpt("publish-dir", default=None,
+                    help="Directory name where book will be copied to "
+                    "in publish-docs directory. This option must be in "
+                    "same order as the book option. Either give this option "
+                    "for all books or for none. If publish-dir is not "
+                    "specified, book is used as publish-dir."),
     cfg.StrOpt("repo-name", default=None,
                help="Name of repository."),
     cfg.StrOpt("release-path", default="trunk",
@@ -1085,6 +1185,9 @@ def handle_options():
     if CONF.verbose:
         print("Verbose execution")
 
+    if CONF.debug:
+        print("Enabling debug code")
+
     if CONF.language:
         print("Building for language '%s'" % CONF.language)
 
@@ -1103,14 +1206,25 @@ def handle_options():
 
     if CONF.check_build and CONF.book and CONF.target_dir:
         if len(CONF.book) != len(CONF.target_dir):
-            print("ERROR: books and target-dirs need to have a 1:1 "
+            print("ERROR: book and target_dir options need to have a 1:1 "
                   "relationship.")
+            sys.exit(1)
+        if (CONF.publish_dir and
+            len(CONF.publish_dir) != len(CONF.target_dir)):
+            print("ERROR: publish_dir and target_dir need to have a 1:1 "
+                  "relationship if publish_dir is specified.")
             sys.exit(1)
         for i in range(len(CONF.book)):
             BOOK_MAPPINGS[CONF.book[i]] = CONF.target_dir[i]
             if CONF.verbose:
                 print(" Target dir for %s is %s" %
                       (CONF.book[i], BOOK_MAPPINGS[CONF.book[i]]))
+        if CONF.publish_dir:
+            for i in range(len(CONF.book)):
+                BOOK_PUBLISH_MAPPINGS[CONF.book[i]] = CONF.publish_dir[i]
+                if CONF.verbose:
+                    print(" Publish dir for %s is %s" %
+                          (CONF.book[i], BOOK_PUBLISH_MAPPINGS[CONF.book[i]]))
 
 
 def main():
