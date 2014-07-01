@@ -19,7 +19,7 @@ import sys
 from xml.dom import minidom
 import xml.sax.saxutils
 
-#Swift configuration example files live in
+# Swift configuration example files live in
 # swift/etc/*.conf-sample
 # and contain sections enclosed in [], with
 # options one per line containing =
@@ -60,13 +60,14 @@ def get_existing_options(optfiles):
         trlist = tbody.getElementsByTagName('tr')
         for tr in trlist:
             try:
-                optentry = tr.childNodes[1].childNodes[0]
-                option, default = optentry.nodeValue.split('=', 1)
-                helptext = tr.childNodes[2].childNodes[0].nodeValue
+                tdlist = tr.getElementsByTagName('td')
+                optentry = tdlist[0].childNodes[0].nodeValue
+                option = optentry.split('=', 1)[0].strip()
+                helptext = tdlist[1].childNodes[0].nodeValue
             except IndexError:
                 continue
             if option not in options or 'No help text' in options[option]:
-                #options[option.split('=',1)[0]] = helptext
+                # options[option.split('=',1)[0]] = helptext
                 options[option] = helptext
     return options
 
@@ -118,24 +119,24 @@ def new_section_file(sample, current_section):
                         + '.xml')
     section_file = open(section_filename, 'w')
     section_file.write('<?xml version="1.0" encoding="UTF-8"?>\n\
-     <!-- The tool that generated this table lives in the\n\
-          tools directory of this repository. As it was a one-time\n\
-          generation, you can edit this file. -->\n\
-     <para xmlns="http://docbook.org/ns/docbook" version="5.0">\n\
-     <table rules="all">\n\
-     <caption>Description of configuration options for <literal>'
+    <!-- The tool that generated this table lives in the\n\
+         openstack-doc-tools repository. The editions made in\n\
+         this file will *not* be lost if you run the script again. -->\n\
+    <para xmlns="http://docbook.org/ns/docbook" version="5.0">\n\
+    <table rules="all">\n\
+    <caption>Description of configuration options for <literal>'
                        + current_section + '</literal> in <literal>'
                        + os.path.basename(sample) +
                        '</literal></caption>\n\
-                       <col width="50%"/>\n\
-     <col width="50%"/>\n\
-     <thead>\n\
+    <col width="50%"/>\n\
+    <col width="50%"/>\n\
+    <thead>\n\
         <tr>\n\
-             <td>Configuration option=Default value</td>\n\
-             <td>Description</td>\n\
+            <th>Configuration option = Default value</th>\n\
+            <th>Description</th>\n\
         </tr>\n\
-     </thead>\n\
-     <tbody>')
+    </thead>\n\
+    <tbody>')
     return section_file
 
 
@@ -150,7 +151,7 @@ def create_new_tables(repo, verbose):
 
     existing_tables = glob.glob('../../doc/common/tables/swift*xml')
     options = {}
-    #use the existing tables to get a list of option names
+    # use the existing tables to get a list of option names
     options = get_existing_options(existing_tables)
     option_descs = extract_descriptions_from_devref(repo, options)
     conf_samples = glob.glob(repo + '/etc/*conf-sample')
@@ -166,9 +167,9 @@ def create_new_tables(repo, verbose):
                 """
                 if current_section != line.strip('#').strip():
                     if section_file is not None:
-                        section_file.write('\n             </tbody>\n\
-                        </table>\n\
-                        </para>')
+                        section_file.write('\n    </tbody>\n\
+    </table>\n\
+    </para>')
                         section_file.close()
                     current_section = line.strip('#').strip()
                     section_file = new_section_file(sample, current_section)
@@ -189,20 +190,20 @@ def create_new_tables(repo, verbose):
                         option_desc = option_descs[parsed_line[0]].replace(
                             u'\xa0', u' ')
                     else:
-                        option_desc = 'No help text available for this option'
+                        option_desc = 'No help text available for this option.'
                         if verbose > 0:
                             print(parsed_line[0] + "has no help text")
-                    section_file.write('\n                    <tr>\n'
-                                       '                        <td>' +
-                                       parsed_line[0] + '=' +
+                    section_file.write('\n        <tr>\n'
+                                       '            <td>' +
+                                       parsed_line[0] + ' = ' +
                                        xml.sax.saxutils.escape(
                                            str(parsed_line[1])) +
                                        '</td><td>' + option_desc + '</td>\n' +
-                                       '              </tr>')
+                                       '        </tr>')
         if section_file is not None:
-            section_file.write('\n             </tbody>\n\
-                        </table>\n\
-                        </para>')
+            section_file.write('\n    </tbody>\n\
+    </table>\n\
+    </para>')
             section_file.close()
 
 

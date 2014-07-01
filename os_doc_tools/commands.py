@@ -13,32 +13,12 @@
 # under the License.
 
 import argparse
+import os
 import subprocess
 import sys
 
 import os_doc_tools
-
-
-# NOTE(berendt): check_output as provided in Python 2.7.5 to make script
-#                usable with Python < 2.7
-def check_output(*popenargs, **kwargs):
-    """Run command with arguments and return its output as a byte string.
-
-    If the exit code was non-zero it raises a CalledProcessError.  The
-    CalledProcessError object will have the return code in the returncode
-    attribute and output in the output attribute.
-    """
-    if 'stdout' in kwargs:
-        raise ValueError('stdout argument not allowed, it will be overridden.')
-    process = subprocess.Popen(stdout=subprocess.PIPE, *popenargs, **kwargs)
-    output, unused_err = process.communicate()
-    retcode = process.poll()
-    if retcode:
-        cmd = kwargs.get("args")
-        if cmd is None:
-            cmd = popenargs[0]
-        raise subprocess.CalledProcessError(retcode, cmd, output=output)
-    return output
+from os_doc_tools.common import check_output   # noqa
 
 
 def quote_xml(line):
@@ -57,15 +37,19 @@ def quote_xml(line):
     return line
 
 
-def generate_heading(os_command, api_name, os_file):
+def generate_heading(os_command, api_name, title, os_file):
     """Write DocBook file header.
 
     :param os_command: client command to document
     :param api_name:   string description of the API of os_command
     :param os_file:    open filehandle for output of DocBook file
     """
+    version = check_output([os_command, "--version"],
+                           stderr=subprocess.STDOUT)
+    # Extract version from "swift 0.3"
+    version = version.strip().rpartition(' ')[2]
 
-    print("Documenting '%s help'" % os_command)
+    print("Documenting '%s help (version %s)'" % (os_command, version))
 
     header = """<?xml version=\"1.0\" encoding=\"UTF-8\"?>
 <chapter xmlns=\"http://docbook.org/ns/docbook\"
@@ -77,9 +61,11 @@ def generate_heading(os_command, api_name, os_file):
 
     <?dbhtml stop-chunking?>
 
-    <title>{0} commands</title>
-    <para>The {0} client is the command-line interface (CLI) for the
-         {1} and its extensions.</para>
+    <title>{2}</title>
+    <para>The <command>{0}</command> client is the command-line interface
+         (CLI) for the {1} and its extensions. This chapter documents
+         <command>{0}</command> version {3}.
+    </para>
     <para>For help on a specific <command>{0}</command>
        command, enter:
     </para>
@@ -89,17 +75,17 @@ def generate_heading(os_command, api_name, os_file):
     <section xml:id=\"{0}client_command_usage\">
        <title>{0} usage</title>\n"""
 
-    os_file.write(header.format(os_command, api_name))
+    os_file.write(header.format(os_command, api_name, title, version))
 
 
-def is_option(str):
+def is_option(string):
     """Returns True if string specifies an argument."""
 
-    for x in str:
+    for x in string:
         if not (x.isupper() or x == '_' or x == ','):
             return False
 
-    if str.startswith('DEPRECATED'):
+    if string.startswith('DEPRECATED'):
         return False
     return True
 
@@ -136,8 +122,10 @@ def extract_options(line):
 
         i = 0
         while i < len(words) - 1:
-            if ('<' in words[i] and
-                '>' not in words[i]):
+            if (('<' in words[i] and
+                '>' not in words[i]) or
+                ('[' in words[i] and
+                 ']' not in words[i])):
                 words[i] += ' ' + words[i + 1]
                 del words[i + 1]
             else:
@@ -148,7 +136,7 @@ def extract_options(line):
                 break
             if last_was_option:
                 if (words[1].startswith(("-", '<', '{', '[')) or
-                    is_option(words[1])):
+                   is_option(words[1])):
                     words[0] = words[0] + ' ' + words[1]
                     del words[1]
                 else:
@@ -239,6 +227,7 @@ def generate_command(os_command, os_file):
 
     ignore_next_lines = False
     next_line_screen = True
+    next_line_screen = True
     line_index = -1
     in_screen = False
     for line in help_lines:
@@ -300,14 +289,15 @@ def generate_command(os_command, os_file):
                 next_line_screen = True
                 ignore_next_lines = False
                 continue
-            continue
+            if not line.startswith('usage'):
+                continue
         if not ignore_next_lines:
             if next_line_screen:
-                os_file.write("        <screen><computeroutput>%s\n" % xline)
+                os_file.write("        <screen><computeroutput>%s" % xline)
                 next_line_screen = False
                 in_screen = True
             elif len(line) > 0:
-                os_file.write("%s\n" % (xline))
+                os_file.write("\n%s" % (xline))
 
     if in_screen:
         os_file.write("</computeroutput></screen>\n")
@@ -335,7 +325,16 @@ def generate_subcommand(os_command, os_subcommand, os_file):
     os_file.write("        <title>%s %s command</title>\n"
                   % (os_command, os_subcommand))
 
-    next_line_screen = True
+    if os_command == "swift":
+        next_line_screen = False
+        os_file.write("\n        <screen><computeroutput>Usage: swift %s"
+                      "</computeroutput></screen>"
+                      % (os_subcommand))
+        os_file.write("\n        <para>")
+        in_para = True
+    else:
+        next_line_screen = True
+        in_para = False
     line_index = -1
     # Content is:
     # usage...
@@ -344,16 +343,17 @@ def generate_subcommand(os_command, os_subcommand, os_file):
     #
     # Arguments
 
-    in_para = False
     skip_lines = False
     for line in help_lines:
         line_index += 1
+        if line.startswith('Usage:') and os_command == "swift":
+            line = line[len("Usage: "):]
         if line.startswith(('Arguments:', 'Positional arguments:',
                             'positional arguments', 'Optional arguments',
                             'optional arguments')):
             if in_para:
                 in_para = False
-                os_file.write("        </para>")
+                os_file.write("\n        </para>")
             if line.startswith(('Positional arguments',
                                 'positional arguments')):
                 format_table('Positional arguments',
@@ -372,19 +372,19 @@ def generate_subcommand(os_command, os_subcommand, os_file):
             continue
         if len(line) == 0:
             if not in_para:
-                os_file.write("        </computeroutput></screen>\n")
-                os_file.write("        <para>\n")
+                os_file.write("</computeroutput></screen>")
+                os_file.write("\n        <para>")
             in_para = True
             continue
         xline = quote_xml(line)
         if next_line_screen:
-            os_file.write("        <screen><computeroutput>%s\n" % xline)
+            os_file.write("        <screen><computeroutput>%s" % xline)
             next_line_screen = False
         else:
-            os_file.write("%s\n" % (xline))
+            os_file.write("\n%s" % (xline))
 
     if in_para:
-        os_file.write("        </para>")
+        os_file.write("\n        </para>\n")
     os_file.write("    </section>\n")
 
 
@@ -424,7 +424,7 @@ def generate_end(os_file):
     os_file.write("</chapter>\n")
 
 
-def document_single_project(os_command):
+def document_single_project(os_command, output_dir):
     """Create documenation for os_command."""
 
     print ("Documenting '%s'" % os_command)
@@ -432,44 +432,68 @@ def document_single_project(os_command):
     blacklist = []
     subcommands = []
     if os_command == 'ceilometer':
-        api_name = "OpenStack Telemetry API"
+        api_name = "Telemetry API"
+        title = "Telemetry command-line client"
         blacklist = ["alarm-create"]
     elif os_command == 'cinder':
         api_name = "OpenStack Block Storage API"
+        title = "Block Storage command-line client"
     elif os_command == 'glance':
         api_name = 'OpenStack Image Service API'
+        title = "Image Service command-line client"
         # Does not know about bash-completion yet, need to specify
         # subcommands manually
         subcommands = ["image-create", "image-delete", "image-list",
                        "image-show", "image-update", "member-create",
                        "member-delete", "member-list"]
     elif os_command == 'heat':
-        api_name = "OpenStack Orchestration API"
+        api_name = "Orchestration API"
+        title = "Orchestration command-line client"
         blacklist = ["create", "delete", "describe", "event",
                      "gettemplate", "list", "resource",
                      "update", "validate"]
+    elif os_command == 'ironic':
+        api_name = "Bare metal"
+        title = "Bare metal command-line client"
+        # Does not know about bash-completion yet, need to specify
+        # subcommands manually
+        subcommands = ['chassis-create', 'chassis-delete', 'chassis-list',
+                       'chassis-node-list', 'chassis-show', 'chassis-update',
+                       'driver-list', 'node-create', 'node-delete',
+                       'node-list', 'node-port-list', 'node-set-power-state',
+                       'node-show', 'node-update', 'node-validate',
+                       'port-create', 'port-delete', 'port-list',
+                       'port-show', 'port-update']
     elif os_command == 'keystone':
         api_name = "OpenStack Identity API"
+        title = "Identity service command-line client"
     elif os_command == 'neutron':
         api_name = "OpenStack Networking API"
+        title = "Networking command-line client"
     elif os_command == 'nova':
         api_name = "OpenStack Compute API"
+        title = "Compute command-line client"
         blacklist = ["add-floating-ip", "remove-floating-ip"]
+    elif os_command == 'sahara':
+        api_name = "Data processing"
+        title = "Data processing command-line client"
     elif os_command == 'swift':
         api_name = "OpenStack Object Storage API"
+        title = "Object Storage command-line client"
         # Does not know about bash-completion yet, need to specify
         # subcommands manually
         subcommands = ["delete", "download", "list", "post",
                        "stat", "upload"]
     elif os_command == 'trove':
-        api_name = "OpenStack Database API"
+        api_name = "Database API"
+        title = "Database Service command-line client"
     else:
         print("Not yet handled command")
         sys.exit(-1)
 
-    os_file = open("ch_cli_" + os_command + "_commands.xml",
-                   'w')
-    generate_heading(os_command, api_name, os_file)
+    out_file = "ch_cli_" + os_command + "_commands.xml"
+    os_file = open(os.path.join(output_dir, out_file), 'w')
+    generate_heading(os_command, api_name, title, os_file)
     generate_command(os_command, os_file)
     generate_subcommands(os_command, os_file, blacklist,
                          subcommands)
@@ -483,28 +507,30 @@ def main():
           % os_doc_tools.__version__)
 
     parser = argparse.ArgumentParser(description="Generate DocBook XML files "
-                                     "to document python-PROJECTclients")
+                                     "to document python-PROJECTclients.")
     parser.add_argument('client', nargs='?',
-                        help="OpenStack command to document")
-    parser.add_argument("--all", help="Document all clients ",
+                        help="OpenStack command to document.")
+    parser.add_argument("--all", help="Document all clients.",
                         action="store_true")
+    parser.add_argument("--output-dir", default=".",
+                        help="Directory to write generated files to")
     prog_args = parser.parse_args()
 
     if prog_args.all:
-        document_single_project("ceilometer")
-        document_single_project("cinder")
-        document_single_project("glance")
-        document_single_project("heat")
-        document_single_project("keystone")
-        document_single_project("nova")
-        document_single_project("neutron")
-        document_single_project("swift")
-        document_single_project("trove")
+        document_single_project("ceilometer", prog_args.output_dir)
+        document_single_project("cinder", prog_args.output_dir)
+        document_single_project("glance", prog_args.output_dir)
+        document_single_project("heat", prog_args.output_dir)
+        document_single_project("keystone", prog_args.output_dir)
+        document_single_project("nova", prog_args.output_dir)
+        document_single_project("neutron", prog_args.output_dir)
+        document_single_project("swift", prog_args.output_dir)
+        document_single_project("trove", prog_args.output_dir)
     elif prog_args.client is None:
         print("Pass the name of the client to document as argument.")
         sys.exit(1)
     else:
-        document_single_project(prog_args.client)
+        document_single_project(prog_args.client, prog_args.output_dir)
 
 
 if __name__ == "__main__":

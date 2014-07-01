@@ -27,8 +27,8 @@ import sys
 import tempfile
 import xml.dom.minidom
 
-from xml2po import Main
-from xml2po.modes.docbook import docbookXmlMode
+from xml2po import Main    # noqa
+from xml2po.modes.docbook import docbookXmlMode    # noqa
 
 
 class myDocbookXmlMode(docbookXmlMode):
@@ -42,7 +42,7 @@ class myDocbookXmlMode(docbookXmlMode):
 
 default_mode = 'docbook'
 operation = 'merge'
-options = {
+xml_options = {
     'mark_untranslated': False,
     'expand_entities': True,
     'expand_all_entities': False,
@@ -50,14 +50,15 @@ options = {
 
 IGNORE_FOLDER = []
 IGNORE_FILE = []
-root = "./doc"
 
 
-def mergeback(folder, language):
+def mergeback(folder, language, root):
+    """Generate translated files for language in directory folder."""
+
     if folder is None:
         path = root
     else:
-        outputFiles = mergeSingleDocument(folder, language)
+        outputFiles = mergeSingleDocument(folder, language, root)
         if (outputFiles is not None) and (len(outputFiles) > 0):
             for outXML in outputFiles:
                 changeXMLLangSetting(outXML, language)
@@ -69,13 +70,13 @@ def mergeback(folder, language):
     files = os.listdir(path)
     for aFile in files:
         if not (aFile in IGNORE_FOLDER):
-            outputFiles = mergeSingleDocument(aFile, language)
+            outputFiles = mergeSingleDocument(aFile, language, root)
             if (outputFiles is not None) and (len(outputFiles) > 0):
                 for outXML in outputFiles:
                     changeXMLLangSetting(outXML, language)
 
 
-def mergeSingleDocument(folder, language):
+def mergeSingleDocument(folder, language, root):
     xmlfiles = []
     outputfiles = []
     abspath = os.path.join(root, folder)
@@ -86,19 +87,19 @@ def mergeSingleDocument(folder, language):
 
     if len(xmlfiles) > 0:
         popath = os.path.join(abspath, "locale", language + ".po")
-        #generate MO file
+        # generate MO file
         mofile_handler, mofile_tmppath = tempfile.mkstemp()
         os.close(mofile_handler)
         os.system("msgfmt -o %s %s" % (mofile_tmppath, popath))
 
         for aXML in xmlfiles:
-            #(filename, ext) = os.path.splitext(os.path.basename(aXML))
+            # (filename, ext) = os.path.splitext(os.path.basename(aXML))
             relpath = os.path.relpath(aXML, root)
             outputpath = os.path.join(os.path.curdir, "generated", language,
                                       relpath)
             try:
                 xml2po_main = Main(default_mode, "merge", outputpath,
-                                   options)
+                                   xml_options)
                 xml2po_main.current_mode = myDocbookXmlMode()
                 xml2po_main.merge(mofile_tmppath, aXML)
                 outputfiles.append(outputpath)
@@ -114,19 +115,35 @@ def mergeSingleDocument(folder, language):
 
 
 def changeXMLLangSetting(xmlFile, language):
-    dom = xml.dom.minidom.parse(xmlFile)
+    """Update XML settings for file."""
+
+    # The mergeback breaks the ENTITIY title which should look like:
+    # <!DOCTYPE chapter [
+    # <!ENTITY % openstack SYSTEM "../common/entities/openstack.ent">
+    # %openstack;
+    # ]>
+    # The "%openstack;" gets removed, let's readd it first.
+
+    # NOTE(jaegerandi): This just handles the openstack ENTITY, if
+    # others are used, this needs to be generalized.
+    with open(xmlFile) as xml_file:
+        newxml = xml_file.read().replace(
+            'common/entities/openstack.ent">',
+            'common/entities/openstack.ent"> %openstack;')
+
+    dom = xml.dom.minidom.parseString(newxml)
     root = dom.documentElement
     root.setAttribute("xml:lang", language[:2])
     fileObj = codecs.open(xmlFile, "wb", encoding="utf-8")
 
-    #add namespace to link
+    # add namespace to link
     nodelists = root.getElementsByTagName("link")
     for node in nodelists:
         if node.hasAttribute("href"):
             node.setAttribute("xlink:href", node.getAttribute("href"))
+            node.setAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink")
         if node.hasAttribute("title"):
             node.setAttribute("xlink:title", node.getAttribute("title"))
-
     dom.writexml(fileObj)
 
 
@@ -140,11 +157,11 @@ def get_xml_list(sms, dr, flst):
 
     for f in flst:
         if (f.endswith(".xml") and (f != "pom.xml") and
-            not (f in IGNORE_FILE)):
+           not (f in IGNORE_FILE)):
             sms.append(os.path.join(dr, f))
 
 
-def get_default_book():
+def get_default_book(root):
     return os.listdir(root)[0]
 
 
@@ -152,8 +169,8 @@ def generatedocbook():
     global IGNORE_FOLDER, IGNORE_FILE
 
     usage = "usage: %prog [options] command [cmd_options]"
-    description = "This is the tool to generate translated docbooks, which"
-    " will be stored in 'generated/[language]/"
+    description = "This is the tool to generate translated docbooks, which "
+    "will be stored in 'generated/[language]/"
 
     IGNORE_FOLDER = ["docbkx-example"]
     IGNORE_FILE = []
@@ -166,19 +183,28 @@ def generatedocbook():
         "-l", "--language", dest="language", help=("specified language")
     )
     parser.add_option(
-        "-b", "--book", dest="book", default=get_default_book(),
+        "-b", "--book", dest="book",
         help=("specified docbook")
+    )
+    parser.add_option(
+        "-r", "--root", dest="root", default="./doc",
+        help=("root directory")
     )
     (options, args) = parser.parse_args()
     if options.language is None:
         print("must specify language")
         return
 
-    #change working directory
+    root = options.root
+    if options.book is None:
+        options.book = get_default_book(root)
 
-    #copy folders
+    # change working directory
+
+    # copy folders
     folder = options.book
     language = options.language
+    root = options.root
     sourcepath = os.path.join(root, folder)
     destpath = os.path.join(os.path.curdir, "generated", language)
     if not os.path.exists(destpath):
@@ -189,14 +215,14 @@ def generatedocbook():
         shutil.rmtree(destfolder)
 
     os.system("cp -r %s %s" % (sourcepath, destpath))
-    mergeback(folder, language)
+    mergeback(folder, language, root)
 
 
-def generatePoT(folder):
+def generatePoT(folder, root):
     if folder is None:
         path = root
     else:
-        generateSinglePoT(folder)
+        generateSinglePoT(folder, root)
         return
 
     if not os.path.isdir(path):
@@ -205,10 +231,10 @@ def generatePoT(folder):
     files = os.listdir(path)
     for aFile in files:
         if not (aFile in IGNORE_FOLDER):
-            generateSinglePoT(aFile)
+            generateSinglePoT(aFile, root)
 
 
-def generateSinglePoT(folder):
+def generateSinglePoT(folder, root):
     xmlfiles = []
     abspath = os.path.join(root, folder)
     if os.path.isdir(abspath):
@@ -222,13 +248,13 @@ def generateSinglePoT(folder):
             os.mkdir(output)
         output = os.path.join(output, folder + ".pot")
         try:
-            xml2po_main = Main(default_mode, "pot", output, options)
+            xml2po_main = Main(default_mode, "pot", output, xml_options)
             xml2po_main.current_mode = myDocbookXmlMode()
         except IOError:
             print("Error: cannot open aFile %s for writing." % (output))
             sys.exit(5)
-        #print(xmlfiles)
-        #print(">>>outout: %s ", output)
+        # print(xmlfiles)
+        # print(">>>outout: %s ", output)
         xml2po_main.to_pot(xmlfiles)
 
 
@@ -241,4 +267,8 @@ def generatepot():
         folder = sys.argv[1]
     except Exception:
         folder = None
-    generatePoT(folder)
+    try:
+        root = sys.argv[2]
+    except Exception:
+        root = "./doc"
+    generatePoT(folder, root)

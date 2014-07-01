@@ -33,7 +33,9 @@ Requires:
 '''
 
 import gzip
+import json
 import multiprocessing
+import operator
 import os
 import re
 import shutil
@@ -43,14 +45,19 @@ import sys
 from lxml import etree
 
 import os_doc_tools
+from os_doc_tools.common import check_output   # noqa
 from oslo.config import cfg
 
 
-# These are files that are known to not be in DocBook format.
-# Add values via --file-exceptions
+# These are files that are known to not pass syntax or niceness checks
+# Add values via --file-exceptions.
 FILE_EXCEPTIONS = []
 
-# These are books that we aren't checking yet
+# These are files that are known to not be in DocBook XML format.
+# Add values via --build-file-exceptions.
+BUILD_FILE_EXCEPTIONS = []
+
+# These are books that we aren't checking yet.
 BOOK_EXCEPTIONS = []
 
 # Mappings from books to build directories under target
@@ -77,38 +84,16 @@ KNOWN_AUDIENCE_VALUES = ["enduser",
                          "installer",
                          "webpage"]
 
-os_doc_tools_dir = os.path.dirname(__file__)
+OS_DOC_TOOLS_DIR = os.path.dirname(__file__)
 # NOTE(jaegerandi): BASE_RNG needs to end with '/', otherwise
 # the etree.parse call in get_wadl_schema will fail.
-BASE_RNG = os.path.join(os_doc_tools_dir, 'resources/')
+BASE_RNG = os.path.join(OS_DOC_TOOLS_DIR, 'resources/')
 RACKBOOK_RNG = os.path.join(BASE_RNG, 'rackbook.rng')
 DOCBOOKXI_RNG = os.path.join(BASE_RNG, 'docbookxi.rng')
 WADL_RNG = os.path.join(BASE_RNG, 'wadl.rng')
 WADL_XSD = os.path.join(BASE_RNG, 'wadl.xsd')
 
-SCRIPTS_DIR = os.path.join(os_doc_tools_dir, 'scripts')
-
-
-# NOTE(berendt): check_output as provided in Python 2.7.5 to make script
-#                usable with Python < 2.7
-def check_output(*popenargs, **kwargs):
-    """Run command with arguments and return its output as a byte string.
-
-    If the exit code was non-zero it raises a CalledProcessError.  The
-    CalledProcessError object will have the return code in the returncode
-    attribute and output in the output attribute.
-    """
-    if 'stdout' in kwargs:
-        raise ValueError('stdout argument not allowed, it will be overridden.')
-    process = subprocess.Popen(stdout=subprocess.PIPE, *popenargs, **kwargs)
-    output, unused_err = process.communicate()
-    retcode = process.poll()
-    if retcode:
-        cmd = kwargs.get("args")
-        if cmd is None:
-            cmd = popenargs[0]
-        raise subprocess.CalledProcessError(retcode, cmd, output=output)
-    return output
+SCRIPTS_DIR = os.path.join(OS_DOC_TOOLS_DIR, 'scripts')
 
 
 def get_schema(is_api_site=False):
@@ -126,9 +111,9 @@ def get_wadl_schema():
     # NOTE(jaegerandi): We could use the RelaxNG instead
     # like follows but this gives quite some errors at the
     # moment, so only validate using the XMLSchema
-    #url = WADL_RNG
-    #relaxng_doc = etree.parse(url, base_url=BASE_RNG)
-    #return etree.RelaxNG(relaxng_doc)
+    # url = WADL_RNG
+    # relaxng_doc = etree.parse(url, base_url=BASE_RNG)
+    # return etree.RelaxNG(relaxng_doc)
     url = WADL_XSD
     schema = etree.parse(url, base_url=BASE_RNG)
     return etree.XMLSchema(schema)
@@ -155,18 +140,6 @@ def verify_section_tags_have_xmid(doc):
     for node in doc.xpath('//docbook:section', namespaces=ns):
         if "{http://www.w3.org/XML/1998/namespace}id" not in node.attrib:
             raise ValueError("section missing xml:id attribute, line %d" %
-                             node.sourceline)
-
-
-def verify_resources_tags_have_xmid(doc):
-    """Check that all resources tags have an xml:id attribute
-
-    Will throw an exception if there's at least one missing.
-    """
-    ns = {"wadl": "http://wadl.dev.java.net/2009/02"}
-    for node in doc.xpath('//wadl:resources', namespaces=ns):
-        if "{http://www.w3.org/XML/1998/namespace}id" not in node.attrib:
-            raise ValueError("resources missing xml:id attribute, line %d" %
                              node.sourceline)
 
 
@@ -213,7 +186,7 @@ def verify_profiling(doc):
     verify_attribute_profiling(doc, "audience", KNOWN_AUDIENCE_VALUES)
 
 
-def verify_nice_usage_of_whitespaces(docfile):
+def verify_whitespace_niceness(docfile):
     """Check that no unnecessary whitespaces are used."""
     checks = [
         re.compile(".*\s+\n$"),
@@ -235,32 +208,41 @@ def verify_nice_usage_of_whitespaces(docfile):
 
     for element in elements:
         checks.append(re.compile(".*<%s>\s+[\w\-().:!?{}\[\]]+.*\n"
-                                 % element)),
+                                 % element))
         checks.append(re.compile(".*[\w\-().:!?{}\[\]]+\s+<\/%s>.*\n"
                                  % element))
 
     lc = 0
     affected_lines = []
     tab_lines = []
+    nbsp_lines = []
     for line in open(docfile, 'r'):
         lc = lc + 1
         if '\t' in line:
             tab_lines.append(str(lc))
 
+        if '\xc2\xa0' in line:
+            nbsp_lines.append(str(lc))
         for check in checks:
             if check.match(line) and lc not in affected_lines:
                 affected_lines.append(str(lc))
 
-    if len(affected_lines) > 0 and len(tab_lines) > 0:
-        msg = "trailing or unnecessary whitespaces found in lines: %s" % (
-              ", ".join(affected_lines))
-        msg = msg + "; tabs found in lines: %s" % ", ".join(tab_lines)
+    msg = ""
+    if nbsp_lines:
+        msg = "non-breaking space found in lines (use &nbsp;): %s" % (
+            ", ".join(nbsp_lines))
+    if affected_lines:
+        if (msg):
+            msg += "\n    "
+        msg += "trailing or unnecessary whitespaces found in lines: %s"\
+               % (", ".join(affected_lines))
+    if tab_lines:
+        if (msg):
+            msg += "\n    "
+        msg += "tabs found in lines: %s" % ", ".join(tab_lines)
+
+    if msg:
         raise ValueError(msg)
-    elif len(affected_lines) > 0:
-        raise ValueError("trailing or unnecessary whitespaces found in "
-                         "lines: %s" % (", ".join(affected_lines)))
-    elif len(tab_lines) > 0:
-        raise ValueError("tabs found in lines: %s" % ", ".join(tab_lines))
 
 
 def error_message(error_log):
@@ -302,25 +284,7 @@ def www_touched(check_only_www):
     return www_changed
 
 
-def ha_guide_touched():
-    """Check whether files in high-availability-guide directory are touched."""
-
-    try:
-        git_args = ["git", "diff", "--name-only", "HEAD~1", "HEAD"]
-        modified_files = check_output(git_args).strip().split()
-    except (subprocess.CalledProcessError, OSError) as e:
-        print("git failed: %s" % e)
-        sys.exit(1)
-
-    ha_changed = False
-    for f in modified_files:
-        if f.startswith("doc/high-availability-guide/"):
-            ha_changed = True
-
-    return ha_changed
-
-
-def check_modified_affects_all(rootdir, verbose):
+def check_modified_affects_all(rootdir):
     """Check whether special files were modified.
 
     There are some special files where we should rebuild all books
@@ -337,12 +301,15 @@ def check_modified_affects_all(rootdir, verbose):
         sys.exit(1)
 
     special_files = [
-        "tools/test.py",
+        # Top-Level pom.xml
+        "pom.xml",
+        # doc/pom.xml in openstack-manuals
         "doc/pom.xml"
     ]
+
     for f in modified_files:
-        if f in special_files:
-            if verbose:
+        if f in special_files or f.endswith('.ent'):
+            if cfg.CONF.verbose:
                 print("File %s modified, this affects all books." % f)
             return True
 
@@ -369,6 +336,18 @@ def get_modified_files(rootdir, filtering=None):
     return modified_files
 
 
+def filter_dirs(dirs):
+    """Return list of directories to descend into."""
+
+    # Don't descend into 'locale', 'target', and 'publish-docs'
+    # subdirectories and filter out any dot directories
+
+    return [d for d in dirs if (d != 'target' and
+                                d != 'publish-docs' and
+                                d != 'locale' and
+                                not d.startswith('.'))]
+
+
 def check_deleted_files(rootdir, file_exceptions, verbose):
     """Check whether files got deleted and verify that no other file
     references them.
@@ -385,58 +364,53 @@ def check_deleted_files(rootdir, file_exceptions, verbose):
         for f in deleted_files:
             print ("   %s" % f)
 
-    deleted_files = map(lambda x: os.path.abspath(x), deleted_files)
+    deleted_files = [os.path.abspath(x) for x in deleted_files]
     no_checked_files = 0
 
     # Figure out whether files were included anywhere
     missing_reference = False
 
     for root, dirs, files in os.walk(rootdir):
-        # Don't descend into 'target' subdirectories
-        try:
-            ind = dirs.index('target')
-            del dirs[ind]
-        except ValueError:
-            pass
-
-        # Filter out any dot directories
-        dirs[:] = [d for d in dirs if not d.startswith('.')]
+        dirs[:] = filter_dirs(dirs)
 
         os.chdir(root)
 
         for f in files:
-            if (f.endswith('.xml') and
-                    f != 'pom.xml' and
-                    f not in file_exceptions):
-                path = os.path.abspath(os.path.join(root, f))
-                try:
-                    doc = etree.parse(path)
-                except etree.XMLSyntaxError as e:
-                    print(" Warning: file %s is invalid XML: %s" % (path, e))
-                    continue
+            if (not f.endswith('.xml') or
+                    f == 'pom.xml' or
+                    f in file_exceptions):
+                continue
 
-                no_checked_files = no_checked_files + 1
+            path = os.path.abspath(os.path.join(root, f))
+            try:
+                doc = etree.parse(path)
+            except etree.XMLSyntaxError as e:
+                print(" Warning: file %s is invalid XML: %s" % (path, e))
+                continue
 
-                # Check for inclusion of files as part of imagedata
-                for node in doc.findall(
-                        '//{http://docbook.org/ns/docbook}imagedata'):
-                    href = node.get('fileref')
-                    if (f not in file_exceptions and
-                            os.path.abspath(href) in deleted_files):
-                        print("  File %s has imagedata href for deleted "
-                              "file %s" % (f, href))
-                        missing_reference = True
+            no_checked_files = no_checked_files + 1
 
-                        break
+            # Check for inclusion of files as part of imagedata
+            for node in doc.findall(
+                    '//{http://docbook.org/ns/docbook}imagedata'):
+                href = node.get('fileref')
+                if (f not in file_exceptions and
+                        os.path.abspath(href) in deleted_files):
+                    print("  File %s has imagedata href for deleted "
+                          "file %s" % (f, href))
+                    missing_reference = True
 
-                # Check for inclusion of files as part of xi:include
-                ns = {"xi": "http://www.w3.org/2001/XInclude"}
-                for node in doc.xpath('//xi:include', namespaces=ns):
-                    href = node.get('href')
-                    if (os.path.abspath(href) in deleted_files):
-                        print("  File %s has an xi:include on deleted file %s"
-                              % (f, href))
-                        missing_reference = True
+                    break
+
+            # Check for inclusion of files as part of xi:include
+            ns = {"xi": "http://www.w3.org/2001/XInclude"}
+            for node in doc.xpath('//xi:include', namespaces=ns):
+                href = node.get('href')
+                if (os.path.abspath(href) in deleted_files):
+                    print("  File %s has an xi:include on deleted file %s"
+                          % (f, href))
+                    missing_reference = True
+
     if missing_reference:
         print("Failed removed file check, %d files were removed, "
               "%d files checked.\n"
@@ -446,6 +420,32 @@ def check_deleted_files(rootdir, file_exceptions, verbose):
     print("Passed removed file check, %d files were removed, "
           "%d files checked.\n"
           % (len(deleted_files), no_checked_files))
+
+
+def validate_one_json_file(rootdir, path, verbose, check_syntax,
+                           check_niceness):
+    """Validate a single JSON file."""
+
+    any_failures = False
+    if verbose:
+        print(" Validating %s" % os.path.relpath(path, rootdir))
+
+    try:
+        if check_syntax:
+            json_file = open(path, 'rb')
+            json.load(json_file)
+    except ValueError as e:
+        any_failures = True
+        print("  Invalid JSON file %s: %s" %
+              (os.path.relpath(path, rootdir), e))
+    try:
+        if check_niceness:
+            verify_whitespace_niceness(path)
+    except ValueError as e:
+        any_failures = True
+        print("  %s: %s" % (os.path.relpath(path, rootdir), e))
+
+    return any_failures
 
 
 def validate_one_file(schema, rootdir, path, verbose,
@@ -463,12 +463,10 @@ def validate_one_file(schema, rootdir, path, verbose,
                 if validation_failed(schema, doc):
                     any_failures = True
                     print(error_message(schema.error_log))
-                if is_wadl(path):
-                    verify_resources_tags_have_xmid(doc)
                 verify_section_tags_have_xmid(doc)
                 verify_profiling(doc)
         if check_niceness:
-            verify_nice_usage_of_whitespaces(path)
+            verify_whitespace_niceness(path)
     except etree.XMLSyntaxError as e:
         any_failures = True
         print("  %s: %s" % (os.path.relpath(path, rootdir), e))
@@ -492,7 +490,7 @@ def is_xml_like(filename):
     """
 
     return (filename.endswith(('.xml', '.xsd', '.xsl', '.wadl',
-                               '.xjb')) and
+                               '.xjb', '.json')) and
             not filename.endswith('pom.xml'))
 
 
@@ -500,6 +498,12 @@ def is_wadl(filename):
     """Returns true if file ends with .wadl."""
 
     return filename.endswith('.wadl')
+
+
+def is_json(filename):
+    """Returns true if file ends with .json."""
+
+    return filename.endswith('.json')
 
 
 def validate_individual_files(files_to_check, rootdir, exceptions, verbose,
@@ -532,14 +536,19 @@ def validate_individual_files(files_to_check, rootdir, exceptions, verbose,
             # Files ending with ".xml" in subdirectories of
             # wadls and samples files are not docbook files.
             if (f.endswith('.xml') and
-                ("wadls" in f or "samples" in f)):
+               ("wadls" in f or "samples" in f)):
                 validate_schema = False
             # Right now we can only validate docbook .xml
             # and .wadl files with a schema
             elif not f.endswith(('.wadl', '.xml')):
                 validate_schema = False
 
-        if (is_api_site and is_wadl(f)):
+        if is_json(f):
+            any_failures = validate_one_json_file(rootdir, f,
+                                                  verbose,
+                                                  check_syntax,
+                                                  check_niceness)
+        elif (is_api_site and is_wadl(f)):
             any_failures = validate_one_file(wadl_schema, rootdir, f,
                                              verbose,
                                              check_syntax,
@@ -572,8 +581,7 @@ def validate_modified_files(rootdir, exceptions, verbose,
     # Do not select deleted files, just Added, Copied, Modified, Renamed,
     # or Type changed
     modified_files = get_modified_files(rootdir, "--diff-filter=ACMRT")
-
-    modified_files = filter(is_xml_like, modified_files)
+    modified_files = [f for f in modified_files if is_xml_like(f)]
 
     validate_individual_files(modified_files, rootdir, exceptions,
                               verbose,
@@ -589,20 +597,12 @@ def validate_all_files(rootdir, exceptions, verbose,
     files_to_check = []
 
     for root, dirs, files in os.walk(rootdir):
-        # Don't descend into 'target' subdirectories
-        try:
-            ind = dirs.index('target')
-            del dirs[ind]
-        except ValueError:
-            pass
-
-        # Filter out any dot directories
-        dirs[:] = [d for d in dirs if not d.startswith('.')]
+        dirs[:] = filter_dirs(dirs)
 
         for f in files:
             # Ignore maven files, which are called pom.xml
             if (is_xml_like(f) and
-                f not in exceptions):
+               f not in exceptions):
                 path = os.path.abspath(os.path.join(root, f))
                 files_to_check.append(path)
 
@@ -630,6 +630,25 @@ def get_gitroot():
     return gitroot
 
 
+def print_gitinfo():
+    """Print information about repository and change."""
+
+    try:
+        git_cmd = ["git", "rev-parse", "--abbrev-ref", "HEAD"]
+        gitbranch = check_output(git_cmd).rstrip()
+        git_cmd = ["git", "show", "--format=%s", "-s"]
+        gitsubject = check_output(git_cmd).rstrip()
+        git_cmd = ["git", "show", "--format=%an", "-s"]
+        gitauthor = check_output(git_cmd).rstrip()
+    except (subprocess.CalledProcessError, OSError) as e:
+        print("git failed: %s" % e)
+        sys.exit(1)
+    print("Testing patch:")
+    print("  Title: %s" % gitsubject)
+    print("  Author: %s" % gitauthor)
+    print("  Branch: %s" % gitbranch)
+
+
 def get_publish_path():
     """Return path to use of publishing books."""
 
@@ -647,8 +666,16 @@ def publish_www():
     shutil.copytree(source, www_path)
 
 
-def ignore_most_xml(path, names):
-    f = [n for n in names if n.endswith('.xml') and n != 'atom.xml']
+def ignore_for_publishing(_, names):
+    """Return list of files that should be ignored for publishing."""
+
+    # Ignore:
+    # - all files ending with .xml with the exception of atom.xml
+    # - all files ending with .fo
+    # The directory named wadls
+
+    f = [n for n in names if ((n.endswith('.xml') and n != 'atom.xml')
+                              or (n.endswith('.fo') or n == 'wadls'))]
     return f
 
 
@@ -676,6 +703,10 @@ def publish_book(publish_path, book):
         book_path = os.path.join(book_path, cfg.CONF.release_path)
     elif (book in BOOK_MAPPINGS):
         source = BOOK_MAPPINGS[book]
+    else:
+        if cfg.CONF.debug:
+            print("No build result found for book %s" % book)
+        return
 
     if book in BOOK_PUBLISH_MAPPINGS:
         book_publish_dir = BOOK_PUBLISH_MAPPINGS[book]
@@ -691,7 +722,7 @@ def publish_book(publish_path, book):
     shutil.rmtree(book_path, ignore_errors=True)
 
     shutil.copytree(source, book_path,
-                    ignore=ignore_most_xml)
+                    ignore=ignore_for_publishing)
 
 
 def ensure_exists(program):
@@ -712,6 +743,8 @@ def build_book(book, publish_path, log_path):
     os.chdir(book)
     result = True
     returncode = 0
+    if cfg.CONF.debug:
+        print("Building in directory '%s'" % book)
     base_book = os.path.basename(book)
     base_book_orig = base_book
     comments = "-Dcomments.enabled=%s" % cfg.CONF.comments_enabled
@@ -722,6 +755,7 @@ def build_book(book, publish_path, log_path):
     else:
         out_filename = "build-" + base_book + ".log.gz"
     out_file = gzip.open(os.path.join(log_path, out_filename), 'w')
+    output = ""
     try:
         # Clean first and then build so that the output of all guides
         # is available
@@ -769,26 +803,19 @@ def build_book(book, publish_path, log_path):
             )
             # Success
             base_book = "install-guide (for Debian, Fedora, openSUSE, Ubuntu)"
-        elif base_book == "high-availability-guide":
-            output = subprocess.check_output(
-                [os.path.join(SCRIPTS_DIR, 'build-ha-guide.sh'), ],
-                stderr=subprocess.STDOUT
-            )
-            output = subprocess.check_output(
-                ["mvn", "generate-sources", comments, release, "-B"],
-                stderr=subprocess.STDOUT
-            )
         # Repository: identity-api
-        # Let's not check for "v3" but for the full name instead
-        elif book.endswith("openstack-identity-api/v3"):
+        elif (cfg.CONF.repo_name == "identity-api"
+              and book.endswith("v3")):
             output = subprocess.check_output(
-                [os.path.join(SCRIPTS_DIR, "markdown-docbook.sh"),
+                ["bash", os.path.join(SCRIPTS_DIR, "markdown-docbook.sh"),
                  "identity-api-v3"],
                 stderr=subprocess.STDOUT
             )
             out_file.write(output)
             # File gets generated at wrong directory, we need to move it
             # around
+            if os.path.isfile('identity-api-v3.xml'):
+                os.remove('identity-api-v3.xml')
             shutil.move("src/markdown/identity-api-v3.xml", ".")
             output = subprocess.check_output(
                 ["mvn", "generate-sources", comments, release, "-B"],
@@ -797,7 +824,7 @@ def build_book(book, publish_path, log_path):
         # Repository: image-api
         elif base_book == 'image-api-v2':
             output = subprocess.check_output(
-                [os.path.join(SCRIPTS_DIR, "markdown-docbook.sh"),
+                ["bash", os.path.join(SCRIPTS_DIR, "markdown-docbook.sh"),
                  "image-api-v2.0"],
                 stderr=subprocess.STDOUT
             )
@@ -812,14 +839,14 @@ def build_book(book, publish_path, log_path):
                 stderr=subprocess.STDOUT
             )
     except subprocess.CalledProcessError as e:
-        out_file.write(output)
         output = e.output
         returncode = e.returncode
         result = False
 
     out_file.write(output)
     out_file.close()
-    publish_book(publish_path, base_book_orig)
+    if result:
+        publish_book(publish_path, base_book_orig)
     return (base_book, result, output, returncode)
 
 
@@ -831,13 +858,13 @@ def is_book_master(filename):
     the top-level files and thus have to use a heuristic.
     """
 
-    return ((filename.startswith(('bk-', 'bk_', 'st-'))
+    return ((filename.startswith(('bk-', 'bk_', 'st-', 'api-'))
              and filename.endswith('.xml')) or
             filename == 'openstack-glossary.xml')
 
 
 def find_affected_books(rootdir, book_exceptions, file_exceptions,
-                        verbose, force, ignore_dirs):
+                        force, ignore_dirs):
     """Check which books are affected by modified files.
 
     Returns a set with books.
@@ -847,7 +874,7 @@ def find_affected_books(rootdir, book_exceptions, file_exceptions,
     books = []
     affected_books = set()
 
-    build_all_books = (force or check_modified_affects_all(rootdir, verbose) or
+    build_all_books = (force or check_modified_affects_all(rootdir) or
                        cfg.CONF.only_book)
 
     # Dictionary that contains a set of files.
@@ -860,19 +887,11 @@ def find_affected_books(rootdir, book_exceptions, file_exceptions,
     # 1. Iterate over whole tree and analyze include files.
     # This updates included_by, book_bk and books.
     for root, dirs, files in os.walk(rootdir):
-        # Don't descend into 'target' subdirectories
-        try:
-            ind = dirs.index('target')
-            del dirs[ind]
-        except ValueError:
-            pass
-
-        # Filter out any dot directories
-        dirs[:] = [d for d in dirs if not d.startswith('.')]
+        dirs[:] = filter_dirs(dirs)
 
         # Filter out directories to be ignored
         if ignore_dirs:
-            dirs[:] = [d for d in dirs if not d in ignore_dirs]
+            dirs[:] = [d for d in dirs if d not in ignore_dirs]
 
         if os.path.basename(root) in book_exceptions:
             break
@@ -891,50 +910,93 @@ def find_affected_books(rootdir, book_exceptions, file_exceptions,
         if build_all_books:
             continue
 
-        # ha-guide uses asciidoc which we do not track.
-        # Just check whether any file is touched in that directory
-        if root.endswith('doc/high-availability-guide'):
-            if ha_guide_touched():
-                affected_books.add(book_root)
-
         for f in files:
             f_base = os.path.basename(f)
             f_abs = os.path.abspath(os.path.join(root, f))
             if is_book_master(f_base):
                 book_bk[f_abs] = book_root
-            if (f.endswith('.xml') and
-                    f != "pom.xml" and
-                    f != "ha-guide-docinfo.xml" and
-                    f not in file_exceptions):
-                try:
-                    doc = etree.parse(f_abs)
-                except etree.XMLSyntaxError as e:
-                    print("  Warning: file %s is invalid XML: %s" % (f_abs, e))
-                    continue
-                for node in doc.findall(
-                        '//{http://docbook.org/ns/docbook}imagedata'):
-                    href = node.get('fileref')
+            if (not f.endswith('.xml') or
+                    f == "pom.xml" or
+                    f in file_exceptions):
+                continue
+
+            try:
+                doc = etree.parse(f_abs)
+            except etree.XMLSyntaxError as e:
+                print("  Warning: file %s is invalid XML: %s" % (f_abs, e))
+                continue
+            for node in doc.findall(
+                    '//{http://docbook.org/ns/docbook}imagedata'):
+                href = node.get('fileref')
+                href_abs = os.path.abspath(os.path.join(root, href))
+                if href_abs in included_by:
+                    included_by[href_abs].add(f_abs)
+                else:
+                    included_by[href_abs] = set([f_abs])
+
+            ns = {"xi": "http://www.w3.org/2001/XInclude"}
+            for node in doc.xpath('//xi:include', namespaces=ns):
+                href = node.get('href')
+                href_abs = os.path.abspath(os.path.join(root, href))
+                if href_abs in included_by:
+                    included_by[href_abs].add(f_abs)
+                else:
+                    included_by[href_abs] = set([f_abs])
+
+            ns = {"wadl": "http://wadl.dev.java.net/2009/02"}
+            for node in doc.xpath('//wadl:resource', namespaces=ns):
+                href = node.get('href')
+                hash_sign = href.rfind('#')
+                if hash_sign != -1:
+                    href = href[:hash_sign]
+                href_abs = os.path.abspath(os.path.join(root, href))
+                if href_abs in included_by:
+                    included_by[href_abs].add(f_abs)
+                else:
+                    included_by[href_abs] = set([f_abs])
+            for node in doc.xpath('//wadl:resources', namespaces=ns):
+                href = node.get('href')
+                # wadl:resources either have a href directly or a child
+                # wadl:resource that has a href. So, check that we have
+                # a href.
+                if href:
+                    hash_sign = href.rfind('#')
+                    if hash_sign != -1:
+                        href = href[:hash_sign]
                     href_abs = os.path.abspath(os.path.join(root, href))
                     if href_abs in included_by:
                         included_by[href_abs].add(f_abs)
                     else:
                         included_by[href_abs] = set([f_abs])
 
-                ns = {"xi": "http://www.w3.org/2001/XInclude"}
-                for node in doc.xpath('//xi:include', namespaces=ns):
-                    href = node.get('href')
-                    href_abs = os.path.abspath(os.path.join(root, href))
-                    if href_abs in included_by:
-                        included_by[href_abs].add(f_abs)
-                    else:
-                        included_by[href_abs] = set([f_abs])
+    # Print list of files that are not included anywhere
+    if cfg.CONF.print_unused_files:
+        print("Checking for files that are not included anywhere...")
+        print(" Note: This only looks at files included by an .xml file "
+              "but not for files included by other files like .wadl.")
+        for root, dirs, files in os.walk(rootdir):
+            dirs[:] = filter_dirs(dirs)
+
+            # Filter out directories to be ignored
+            if ignore_dirs:
+                dirs[:] = [d for d in dirs if d not in ignore_dirs]
+
+            for f in files:
+                f_base = os.path.basename(f)
+                f_abs = os.path.abspath(os.path.join(root, f))
+
+                if (f_abs not in included_by and f_base != "pom.xml"
+                   and not is_book_master(f_base)):
+                    f_rel = os.path.relpath(f_abs, rootdir)
+                    print ("  %s " % f_rel)
+        print("\n")
 
     if not build_all_books:
         # Generate list of modified_files
         # Do not select deleted files, just Added, Copied, Modified, Renamed,
         # or Type changed
         modified_files = get_modified_files(rootdir, "--diff-filter=ACMRT")
-        modified_files = map(lambda x: os.path.abspath(x), modified_files)
+        modified_files = [os.path.abspath(f) for f in modified_files]
 
         # 2. Find all modified files and where they are included
 
@@ -995,7 +1057,7 @@ def generate_index_file():
 
     for root, dirs, files in os.walk(publish_path):
 
-        dirs[:] = [d for d in dirs if not d in ['common', 'webapp', 'content']]
+        dirs[:] = [d for d in dirs if d not in ['common', 'webapp', 'content']]
 
         # Ignore top-level index.html files
         if root == publish_path:
@@ -1007,14 +1069,29 @@ def generate_index_file():
                              (path, path))
             index_file.write('<br/>\n')
 
+        if os.path.isfile(os.path.join(root, 'api-ref.html')):
+            path = os.path.relpath(root, publish_path)
+            index_file.write('<a href="%s/api-ref.html">%s</a>\n' %
+                             (path, path))
+            index_file.write('<br/>\n')
+
+        # List PDF files for api-site that have from "bk-api-ref*.pdf"
+        # as well since they have no corresponding html file.
+        for f in files:
+            if f.startswith('bk-api-ref') and f.endswith('.pdf'):
+                path = os.path.relpath(root, publish_path)
+                index_file.write('<a href="%s/%s">%s</a>\n' %
+                                 (path, f, f))
+                index_file.write('<br/>\n')
+
     index_file.write('</body>\n'
                      '</html>\n')
     index_file.close()
 
 
 def build_affected_books(rootdir, book_exceptions, file_exceptions,
-                         verbose, force=False, ignore_errors=False,
-                         ignore_dirs=[]):
+                         force=False, ignore_errors=False,
+                         ignore_dirs=None):
     """Build all the books which are affected by modified files.
 
     Looks for all directories with "pom.xml" and checks if a
@@ -1025,9 +1102,11 @@ def build_affected_books(rootdir, book_exceptions, file_exceptions,
     This will throw an exception if a book fails to build
     """
 
+    if ignore_dirs is None:
+        ignore_dirs = []
+
     books = find_affected_books(rootdir, book_exceptions,
-                                file_exceptions, verbose,
-                                force, ignore_dirs)
+                                file_exceptions, force, ignore_dirs)
 
     # Remove cache content which can cause build failures
     shutil.rmtree(os.path.expanduser("~/.fop"),
@@ -1043,19 +1122,35 @@ def build_affected_books(rootdir, book_exceptions, file_exceptions,
     print("Queuing the following books for building:")
     publish_path = get_publish_path()
     log_path = get_gitroot()
+    first_book = True
+
+    # First show books
     for book in sorted(books):
         print("  %s" % os.path.basename(book))
-        if cfg.CONF.debug:
-            build_book(book, publish_path, log_path)
-        else:
-            pool.apply_async(build_book, (book, publish_path, log_path),
-                             callback=logging_build_book)
-    pool.close()
     print("Building all queued %d books now..." % len(books))
+
+    # And then queue - since we wait for the first book to finish.
+    for book in sorted(books):
+        if cfg.CONF.debug or not cfg.CONF.parallel:
+            (book, result, output, retcode) = build_book(book,
+                                                         publish_path,
+                                                         log_path)
+            logging_build_book([book, result, output, retcode])
+        else:
+            res = pool.apply_async(build_book, (book, publish_path, log_path),
+                                   callback=logging_build_book)
+            if first_book:
+                first_book = False
+                # The first invocation of maven might download loads of
+                # data locally, we cannot do this in parallel. So, wait here
+                # for the first job to finish before running further mvn jobs.
+                res.get()
+    pool.close()
     pool.join()
 
     any_failures = False
-    for book, result, output, returncode in RESULTS_OF_BUILDS:
+    for book, result, _, _ in sorted(RESULTS_OF_BUILDS,
+                                     key=operator.itemgetter(0)):
         if result:
             print(">>> Build of book %s succeeded." % book)
         else:
@@ -1077,21 +1172,9 @@ def build_affected_books(rootdir, book_exceptions, file_exceptions,
     else:
         print("Building of books finished successfully.\n")
 
-
-def read_properties():
-    """Read gerrit-doc.properties."""
-
-    gerrit_file = os.path.join(get_gitroot(), 'gerrit-doc.properties')
-
-    if os.path.isfile(gerrit_file):
-
-        for line in open(gerrit_file, 'r'):
-            content = line.strip().split('=')
-            if len(content) > 1:
-                if content[0] == "DOC_RELEASE_PATH":
-                    cfg.CONF.release_path = content[1]
-                elif content[0] == "DOC_COMMENTS_ENABLED":
-                    cfg.CONF.comments_enabled = content[1]
+    if len(RESULTS_OF_BUILDS) != len(books):
+        print("ERROR: %d queued for building but only %d build!" %
+              (len(books), len(RESULTS_OF_BUILDS)))
 
 
 def add_exceptions(file_exception, verbose):
@@ -1101,6 +1184,15 @@ def add_exceptions(file_exception, verbose):
         if verbose:
             print(" Adding file to ignore list: %s" % entry)
         FILE_EXCEPTIONS.append(entry)
+
+
+def add_build_exceptions(build_file_exception, verbose):
+    """Add list of exceptions from build_file_exceptions."""
+
+    for entry in build_file_exception:
+        if verbose:
+            print(" Adding file to build ignore list: %s" % entry)
+        BUILD_FILE_EXCEPTIONS.append(entry)
 
 
 cli_OPTS = [
@@ -1126,10 +1218,23 @@ cli_OPTS = [
                 "and build all books."),
     cfg.BoolOpt("ignore-errors", default=False,
                 help="Do not exit on failures."),
+    cfg.BoolOpt("parallel", default=True,
+                help="Build books in parallel (default)."),
+    cfg.BoolOpt("print-unused-files", default=False,
+                help="Print list of files that are not included anywhere as "
+                "part of check-build."),
+    cfg.BoolOpt("publish", default=False,
+                help="Setup content in publish-docs directory for "
+                "publishing to external website."),
     cfg.BoolOpt('verbose', default=False, short='v',
                 help="Verbose execution."),
+    cfg.MultiStrOpt("build-file-exception",
+                    help="File that will be skipped during delete and "
+                         "build checks to generate dependencies. This should "
+                         "be done for invalid XML files only."),
     cfg.MultiStrOpt("file-exception",
-                    help="File that will be skipped during validation."),
+                    help="File that will be skipped during niceness and "
+                         "syntax validation."),
     cfg.MultiStrOpt("ignore-dir",
                     help="Directory to ignore for building of manuals. The "
                          "parameter can be passed multiple times to add "
@@ -1194,8 +1299,11 @@ def handle_options():
     if CONF.file_exception:
         add_exceptions(CONF.file_exception, CONF.verbose)
 
+    if CONF.build_file_exception:
+        add_build_exceptions(CONF.build_file_exception, CONF.verbose)
+
     if (not CONF.check_build and not CONF.check_deletions and
-        not CONF.check_niceness and not CONF.check_syntax):
+       not CONF.check_niceness and not CONF.check_syntax):
         CONF.check_all = True
 
     if CONF.check_all:
@@ -1204,13 +1312,16 @@ def handle_options():
         CONF.check_build = True
         CONF.check_niceness = True
 
+    if CONF.publish:
+        CONF.create_index = False
+
     if CONF.check_build and CONF.book and CONF.target_dir:
         if len(CONF.book) != len(CONF.target_dir):
             print("ERROR: book and target_dir options need to have a 1:1 "
                   "relationship.")
             sys.exit(1)
         if (CONF.publish_dir and
-            len(CONF.publish_dir) != len(CONF.target_dir)):
+           len(CONF.publish_dir) != len(CONF.target_dir)):
             print("ERROR: publish_dir and target_dir need to have a 1:1 "
                   "relationship if publish_dir is specified.")
             sys.exit(1)
@@ -1226,13 +1337,20 @@ def handle_options():
                     print(" Publish dir for %s is %s" %
                           (CONF.book[i], BOOK_PUBLISH_MAPPINGS[CONF.book[i]]))
 
+    if CONF.check_build:
+        if CONF.verbose:
+            print(" Release path: %s" % cfg.CONF.release_path)
+            print(" Comments enabled: %s" % cfg.CONF.comments_enabled)
 
-def main():
+
+def doctest():
+    """Central entrypoint, parses arguments and runs tests."""
 
     CONF = cfg.CONF
     print ("\nOpenStack Doc Checks (using openstack-doc-tools version %s)\n"
            % os_doc_tools.__version__)
 
+    print_gitinfo()
     handle_options()
 
     doc_path = get_gitroot()
@@ -1243,7 +1361,10 @@ def main():
     elif not CONF.api_site:
         doc_path = os.path.join(doc_path, 'doc')
 
-    if CONF.check_build and www_touched(False):
+    # Do not publish www directory if we build for external
+    # publishing
+    if (CONF.check_build and
+       (www_touched(False) and not CONF.publish)):
         publish_www()
 
     if not CONF.force and www_touched(True):
@@ -1267,19 +1388,18 @@ def main():
                                     CONF.api_site)
 
     if CONF.check_deletions:
-        check_deleted_files(doc_path, FILE_EXCEPTIONS, CONF.verbose)
+        check_deleted_files(doc_path, BUILD_FILE_EXCEPTIONS, CONF.verbose)
 
     if CONF.check_build:
         # Some programs are called in subprocesses,  make sure that they
         # really exist.
         ensure_exists("mvn")
-        read_properties()
         build_affected_books(doc_path, BOOK_EXCEPTIONS,
-                             FILE_EXCEPTIONS,
-                             CONF.verbose, CONF.force,
+                             BUILD_FILE_EXCEPTIONS,
+                             CONF.force,
                              CONF.ignore_errors,
                              CONF.ignore_dir)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(doctest())
