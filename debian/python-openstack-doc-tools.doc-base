@@ -1,0 +1,9 @@
+Document: python-openstack-doc-tools
+Title: OpenStack doc tools Documentation
+Author: OpenStack Foundation
+Abstract: Sphinx documentation for openstack-doc-tools
+Section: Programming/Python
+
+Format: HTML
+Index: /usr/share/doc/python-openstack-doc-tools/html/index.html
+Files: /usr/share/doc/python-openstack-doc-tools/html/*

@@ -18,7 +18,7 @@ Homepage: https://github.com/openstack/openstack-doc-tools
 Vcs-Git: git://anonscm.debian.org/openstack/openstack-doc-tools.git
 Vcs-Browser: http://anonscm.debian.org/gitweb/?p=openstack/openstack-doc-tools.git;a=summary
 
-Package: openstack-doc-tools
+Package: python-openstack-doc-tools
 Architecture: all
 Pre-Depends: dpkg (>= 1.15.6~)
 Depends: libxml2-dev,
