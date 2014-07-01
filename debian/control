@@ -8,11 +8,11 @@ Uploaders: Julien Danjou <acid@debian.org>,
 Build-Depends: debhelper (>= 9),
                openstack-pkg-tools,
                python-all (>= 2.6.6-3~),
-               python-pbr (>= 0.5.21)
+               python-pbr (>= 0.6),
+               python-sphinx
 Build-Depends-Indep: python-hacking (>= 0.8.0),
                      python-lxml,
                      python-oslo.config,
-                     python-sphinx
 Standards-Version: 3.9.5
 Homepage: https://github.com/openstack/openstack-doc-tools
 Vcs-Git: git://anonscm.debian.org/openstack/openstack-doc-tools.git
