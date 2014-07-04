@@ -39,15 +39,38 @@ except ImportError:
     sys.stderr.write("Cannot import the demjson Python module. Diagnostics "
                      "for invalid JSON files\nwill be limited.\n")
 
+# -----------------------------------------------------------------------------
+# Public interface
+# -----------------------------------------------------------------------------
 
-def indent_note(errstr):
+
+def check_syntax(path):
+    """Check syntax of one JSON file."""
+    _process_file(path)
+
+
+def check_formatting(path):
+    """Check formatting of one JSON file."""
+    _process_file(path, formatting='check')
+
+
+def fix_formatting(path):
+    """Fix formatting of one JSON file."""
+    _process_file(path, formatting='fix')
+
+# -----------------------------------------------------------------------------
+# Implementation details
+# -----------------------------------------------------------------------------
+
+
+def _indent_note(errstr):
     """Indents and wraps a string."""
     return textwrap.fill(errstr, initial_indent=8 * ' ',
                          subsequent_indent=12 * ' ',
                          width=80)
 
 
-def get_demjson_diagnostics(raw):
+def _get_demjson_diagnostics(raw):
     """Get diagnostics string for invalid JSON files from demjson."""
     errstr = None
     try:
@@ -61,62 +84,65 @@ class ParserException(Exception):
     pass
 
 
-def parse_json(raw):
+def _parse_json(raw):
     """Parse raw JSON file."""
     try:
         parsed = json.loads(raw, object_pairs_hook=collections.OrderedDict)
     except ValueError as err:
-        note = indent_note(str(err))
+        note = _indent_note(str(err))
         # if demjson is available, print its diagnostic string as well
         if demjson:
-            demerr = get_demjson_diagnostics(raw)
+            demerr = _get_demjson_diagnostics(raw)
             if demerr:
-                note += "\n" + indent_note(demerr)
+                note += "\n" + _indent_note(demerr)
         raise ParserException(note)
     else:
         return parsed
 
 
-class FormattingException(Exception):
-    pass
+def _format_parsed_json(parsed):
+    """Pretty-print JSON file content while retaining key order."""
+    return json.dumps(parsed, sort_keys=False, separators=(',', ': '),
+                      indent=4)
 
 
-def check_format(parsed, raw, path=None):
-    """Check formatting; pretty-print JSON file while retaining key order."""
-    formatted = json.dumps(parsed, sort_keys=False, separators=(',', ': '),
-                           indent=4)
-    if formatted != raw:
-        if path:
-            with open(path, 'w') as outfile:
-                outfile.write(formatted)
-            errstr = indent_note("Reformatted")
+def _process_file(path, formatting=None):
+    """Check syntax/formatting and fix formatting of a JSON file.
+
+    :param formatting: one of 'check' or 'fix'
+    """
+    with open(path, 'r') as infile:
+        raw = infile.read()
+        try:
+            parsed = _parse_json(raw)
+        except ParserException as err:
+            print("%s\n%s" % (path, err))
         else:
-            errstr = indent_note("Reformatting needed")
-        raise FormattingException(errstr)
+            if formatting in ('check', 'fix'):
+                formatted = _format_parsed_json(parsed)
+                if formatted != raw:
+                    if formatting == "fix":
+                        with open(path, 'w') as outfile:
+                            outfile.write(formatted)
+                        errstr = _indent_note("Reformatted")
+                    else:
+                        errstr = _indent_note("Reformatting needed")
+                    print("%s\n%s" % (path, errstr))
+            else:
+                # for the benefit of external callers
+                return ValueError("formatting arg must be 'check' or 'fix'")
 
 
 def main():
     parser = argparse.ArgumentParser(description="Validate and reformat JSON"
                                      "files.")
     parser.add_argument('files', metavar='FILES', nargs='+')
-    parser.add_argument('-f', '--format', action='store_true',
-                        help='reformat valid JSON files')
+    parser.add_argument('-f', '--formatting', choices=['check', 'fix'],
+                        help='check or fix formatting of JSON files')
     args = parser.parse_args()
 
     for path in args.files:
-        with open(path, 'r') as infile:
-            raw = infile.read()
-            infile.close()
-            try:
-                parsed = parse_json(raw)
-            except ParserException as err:
-                print("%s\n%s" % (path, err))
-            else:
-                try:
-                    check_format(parsed, raw, path if args.format else None)
-                except FormattingException as err:
-                    print("%s\n%s" % (path, err))
-
+        _process_file(path, args.formatting)
 
 if __name__ == "__main__":
     sys.exit(main())

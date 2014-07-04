@@ -44,8 +44,14 @@ def generate_heading(os_command, api_name, title, os_file):
     :param api_name:   string description of the API of os_command
     :param os_file:    open filehandle for output of DocBook file
     """
-    version = check_output([os_command, "--version"],
-                           stderr=subprocess.STDOUT)
+
+    try:
+        version = check_output([os_command, "--version"],
+                               stderr=subprocess.STDOUT)
+    except OSError as e:
+        if e.errno == os.errno.ENOENT:
+            print("Command %s not found, aborting." % os_command)
+            sys.exit(1)
     # Extract version from "swift 0.3"
     version = version.strip().rpartition(' ')[2]
 
@@ -509,7 +515,9 @@ def main():
     parser = argparse.ArgumentParser(description="Generate DocBook XML files "
                                      "to document python-PROJECTclients.")
     parser.add_argument('client', nargs='?',
-                        help="OpenStack command to document.")
+                        help="OpenStack command to document. One of: "
+                        "ceilometer, cinder, glance, heat, keystone, nova, "
+                        "neutron, swift, trove.")
     parser.add_argument("--all", help="Document all clients.",
                         action="store_true")
     parser.add_argument("--output-dir", default=".",
@@ -527,7 +535,7 @@ def main():
         document_single_project("swift", prog_args.output_dir)
         document_single_project("trove", prog_args.output_dir)
     elif prog_args.client is None:
-        print("Pass the name of the client to document as argument.")
+        parser.print_help()
         sys.exit(1)
     else:
         document_single_project(prog_args.client, prog_args.output_dir)

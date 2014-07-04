@@ -97,6 +97,24 @@ sufficient for many of the books.
 Release notes
 =============
 
+0.16.1
+------
+
+* Fix includes of rackbook.rng to unbreak syntax checking.
+
+0.16
+----
+
+* ``openstack-doc-test``: Fix handling of ignore-dir parameter.
+* ``autohelp-wrapper``: New tool to simplify the setup of an autohelp.py
+  environment.
+* ``diff_branches.py``: Generates a listing of the configuration options
+  changes that occured between 2 openstack releases.
+* ``autohelp.py``: Add the 'dump' subcommand, include swift.
+* ``jsoncheck.py``: Add public API.
+* Added tool to generate a sitemap.xml file.
+* Added script to prettify HTML and XML syntax.
+
 0.15
 ----
 
@@ -106,7 +124,6 @@ Release notes
 * New script in cleanup/retf for spell checking using the RETF rules.
   patch.
 * Fix entity handling in ``openstack-generate-docbook``.
-
 
 0.14
 ----

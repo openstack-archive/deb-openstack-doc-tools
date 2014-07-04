@@ -13,7 +13,6 @@
 # under the License.
 
 '''
-
 Usage:
     test.py [path]
 
@@ -29,7 +28,6 @@ Requires:
     - Python 2.7 or greater
     - lxml Python library
     - Maven
-
 '''
 
 import gzip
@@ -43,10 +41,10 @@ import subprocess
 import sys
 
 from lxml import etree
+from oslo.config import cfg
 
 import os_doc_tools
 from os_doc_tools.common import check_output   # noqa
-from oslo.config import cfg
 
 
 # These are files that are known to not pass syntax or niceness checks
@@ -120,19 +118,19 @@ def get_wadl_schema():
 
 
 def validation_failed(schema, doc):
-    """Return True if the parsed doc fails against the schema
+    """Return True if the parsed doc fails against the schema.
 
     This will ignore validation failures of the type: IDREF attribute linkend
     references an unknown ID. This is because we are validating individual
     files that are being imported, and sometimes the reference isn't present
     in the current file.
     """
-    return not schema.validate(doc) and \
-        any(log.type_name != "DTD_UNKNOWN_ID" for log in schema.error_log)
+    return (not schema.validate(doc) and
+            any(log.type_name != "DTD_UNKNOWN_ID" for log in schema.error_log))
 
 
 def verify_section_tags_have_xmid(doc):
-    """Check that all section tags have an xml:id attribute
+    """Check that all section tags have an xml:id attribute.
 
     Will throw an exception if there's at least one missing.
     """
@@ -144,11 +142,13 @@ def verify_section_tags_have_xmid(doc):
 
 
 def verify_attribute_profiling(doc, attribute, known_values):
-    """Check for elements with attribute profiling set that conflicts with
-       the attribute profiling of nodes below them in the DOM
-       tree. This picks up cases where content is accidentally
-       omitted via conflicting profiling. Checks known_values also for
-       supported profiling values.
+    """Check for conflicts in attribute profiling.
+
+    Check for elements with attribute profiling set that conflicts with
+    the attribute profiling of nodes below them in the DOM
+    tree. This picks up cases where content is accidentally
+    omitted via conflicting profiling. Checks known_values also for
+    supported profiling values.
     """
 
     ns = {"docbook": "http://docbook.org/ns/docbook"}
@@ -234,8 +234,8 @@ def verify_whitespace_niceness(docfile):
     if affected_lines:
         if (msg):
             msg += "\n    "
-        msg += "trailing or unnecessary whitespaces found in lines: %s"\
-               % (", ".join(affected_lines))
+        msg += ("trailing or unnecessary whitespaces found in lines: %s"
+                % (", ".join(affected_lines)))
     if tab_lines:
         if (msg):
             msg += "\n    "
@@ -349,9 +349,7 @@ def filter_dirs(dirs):
 
 
 def check_deleted_files(rootdir, file_exceptions, verbose):
-    """Check whether files got deleted and verify that no other file
-    references them.
-    """
+    """Checking that no removed files are referenced."""
 
     print("Checking that no removed files are referenced...")
     deleted_files = get_modified_files(rootdir, "--diff-filter=D")
@@ -376,9 +374,7 @@ def check_deleted_files(rootdir, file_exceptions, verbose):
         os.chdir(root)
 
         for f in files:
-            if (not f.endswith('.xml') or
-                    f == 'pom.xml' or
-                    f in file_exceptions):
+            if not is_testable_xml_file(f, file_exceptions):
                 continue
 
             path = os.path.abspath(os.path.join(root, f))
@@ -477,21 +473,24 @@ def validate_one_file(schema, rootdir, path, verbose,
     return any_failures
 
 
-def is_xml(filename):
+def is_testable_xml_file(path, exceptions):
     """Returns true if file ends with .xml and is not a pom.xml file."""
 
-    return filename.endswith('.xml') and not filename.endswith('/pom.xml')
+    filename = os.path.basename(path)
+    return (filename.endswith('.xml') and not filename == 'pom.xml' and
+            filename not in exceptions)
 
 
-def is_xml_like(filename):
+def is_testable_file(path, exceptions):
     """Returns true if file is in some XML format we handle
 
     Skips pom.xml files as well since those are not handled.
     """
 
+    filename = os.path.basename(path)
     return (filename.endswith(('.xml', '.xsd', '.xsl', '.wadl',
                                '.xjb', '.json')) and
-            not filename.endswith('pom.xml'))
+            not filename == 'pom.xml' and filename not in exceptions)
 
 
 def is_wadl(filename):
@@ -506,7 +505,7 @@ def is_json(filename):
     return filename.endswith('.json')
 
 
-def validate_individual_files(files_to_check, rootdir, exceptions, verbose,
+def validate_individual_files(files_to_check, rootdir, verbose,
                               check_syntax=False, check_niceness=False,
                               ignore_errors=False, is_api_site=False):
     """Validate list of files."""
@@ -527,10 +526,6 @@ def validate_individual_files(files_to_check, rootdir, exceptions, verbose,
         print("Checking niceness of XML files...")
 
     for f in files_to_check:
-        base_f = os.path.basename(f)
-        if (base_f == "pom.xml" or
-                base_f in exceptions):
-            continue
         validate_schema = True
         if is_api_site:
             # Files ending with ".xml" in subdirectories of
@@ -581,9 +576,10 @@ def validate_modified_files(rootdir, exceptions, verbose,
     # Do not select deleted files, just Added, Copied, Modified, Renamed,
     # or Type changed
     modified_files = get_modified_files(rootdir, "--diff-filter=ACMRT")
-    modified_files = [f for f in modified_files if is_xml_like(f)]
+    modified_files = [f for f in modified_files if
+                      is_testable_file(f, exceptions)]
 
-    validate_individual_files(modified_files, rootdir, exceptions,
+    validate_individual_files(modified_files, rootdir,
                               verbose,
                               check_syntax, check_niceness,
                               ignore_errors, is_api_site)
@@ -601,12 +597,11 @@ def validate_all_files(rootdir, exceptions, verbose,
 
         for f in files:
             # Ignore maven files, which are called pom.xml
-            if (is_xml_like(f) and
-               f not in exceptions):
+            if is_testable_file(f, exceptions):
                 path = os.path.abspath(os.path.join(root, f))
                 files_to_check.append(path)
 
-    validate_individual_files(files_to_check, rootdir, exceptions,
+    validate_individual_files(files_to_check, rootdir,
                               verbose,
                               check_syntax, check_niceness,
                               ignore_errors, is_api_site)
@@ -851,11 +846,14 @@ def build_book(book, publish_path, log_path):
 
 
 def is_book_master(filename):
-    """Returns True if filename is one of the special filenames used for the
+    """Check if a file is a book master file.
+
+    Returns True if filename is one of the special filenames used for the
     book master files.
 
     We do not parse pom.xml for the includes directive to determine
     the top-level files and thus have to use a heuristic.
+
     """
 
     return ((filename.startswith(('bk-', 'bk_', 'st-', 'api-'))
@@ -884,6 +882,8 @@ def find_affected_books(rootdir, book_exceptions, file_exceptions,
     # Dictionary with books and their bk*.xml files
     book_bk = {}
 
+    # List of absolute paths of ignored directories
+    abs_ignore_dirs = []
     # 1. Iterate over whole tree and analyze include files.
     # This updates included_by, book_bk and books.
     for root, dirs, files in os.walk(rootdir):
@@ -891,6 +891,10 @@ def find_affected_books(rootdir, book_exceptions, file_exceptions,
 
         # Filter out directories to be ignored
         if ignore_dirs:
+            for d in dirs:
+                if d in ignore_dirs:
+                    abs_ignore_dirs.append(
+                        os.path.join(os.path.join(root, d)))
             dirs[:] = [d for d in dirs if d not in ignore_dirs]
 
         if os.path.basename(root) in book_exceptions:
@@ -898,10 +902,9 @@ def find_affected_books(rootdir, book_exceptions, file_exceptions,
         # Do not process files in doc itself or top-level directory
         elif root.endswith('doc') or root == rootdir:
             continue
-        elif "pom.xml" in files:
-            if (not cfg.CONF.only_book or
-                (cfg.CONF.only_book and
-                 os.path.basename(root) in cfg.CONF.only_book)):
+        elif ("pom.xml" in files and (not cfg.CONF.only_book or
+                                      os.path.basename(root) in
+                                      cfg.CONF.only_book)):
                 books.append(root)
                 book_root = root
 
@@ -915,9 +918,7 @@ def find_affected_books(rootdir, book_exceptions, file_exceptions,
             f_abs = os.path.abspath(os.path.join(root, f))
             if is_book_master(f_base):
                 book_bk[f_abs] = book_root
-            if (not f.endswith('.xml') or
-                    f == "pom.xml" or
-                    f in file_exceptions):
+            if not is_testable_xml_file(f, file_exceptions):
                 continue
 
             try:
@@ -997,6 +998,13 @@ def find_affected_books(rootdir, book_exceptions, file_exceptions,
         # or Type changed
         modified_files = get_modified_files(rootdir, "--diff-filter=ACMRT")
         modified_files = [os.path.abspath(f) for f in modified_files]
+        if ignore_dirs:
+            for idir in abs_ignore_dirs:
+                non_ignored_files = []
+                for f in modified_files:
+                    if not f.startswith(idir):
+                        non_ignored_files.append(f)
+                modified_files = non_ignored_files
 
         # 2. Find all modified files and where they are included
 
@@ -1339,6 +1347,9 @@ def handle_options():
 
     if CONF.check_build:
         if CONF.verbose:
+            if cfg.CONF.ignore_dir:
+                for d in cfg.CONF.ignore_dir:
+                    print(" Ignore directory: %s" % d)
             print(" Release path: %s" % cfg.CONF.release_path)
             print(" Comments enabled: %s" % cfg.CONF.comments_enabled)
 
