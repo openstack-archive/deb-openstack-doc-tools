@@ -1,4 +1,4 @@
-openstack-doc-tools (0.15-1) unstable; urgency=medium
+openstack-doc-tools (0.16.1-1) unstable; urgency=medium
 
   * Initial release (Closes: #753408).
 
