@@ -1,6 +1,6 @@
 Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: openstack-doc-tools
-Source: https://github.com/openstack/python-keystoneclient.git
+Source: git://github.com/openstack/openstack-doc-tools.git
 
 Files: *
 Copyright: (c) 2013-2014, The OpenStack foundation
@@ -9,6 +9,17 @@ License: Apache-2.0
 Files: debian/*
 Copyright: (c) 2014 Thomas Goirand <zigo@debian.org>
 License: Apache-2.0
+
+Files: os_doc_tools/resources/docbookxi.rng
+Copyright: (c) 1992-2011, HaL Computer Systems, Inc.
+           (c) 1992-2011, O'Reilly & Associates, Inc.
+           (c) 1992-2011, ArborText, Inc.
+           (c) 1992-2011, Fujitsu Software Corporation
+           (c) 1992-2011, Norman Walsh
+           (c) 1992-2011, Sun Microsystems, Inc.
+           (c) 1992-2011, the Organization for the Advancement of Structured
+                                                  Information Standards (OASIS)
+License: DocBook-license
 
 License: Apache-2.0
  Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,3 +36,19 @@ License: Apache-2.0
  .
  On Debian systems, the complete text of the Apache version 2.0 license
  can be found in "/usr/share/common-licenses/Apache-2.0".
+
+License: DocBook-license
+ Permission to use, copy, modify and distribute the DocBook schema and its
+ accompanying documentation for any purpose and without fee is hereby granted
+ in perpetuity, provided that the above copyright notice and this paragraph
+ appear in all copies. The copyright holders make no representation about the
+ suitability of the schema for any purpose. It is provided "as is" without
+ expressed or implied warranty.
+ .
+ If you modify the DocBook schema in any way, label your schema as a variant of
+ DocBook. See the reference documentation
+ (http://docbook.org/tdg5/en/html/ch05.html#s-notdocbook) for more information.
+ .
+ Please direct all questions, bug reports, or suggestions for changes to the
+ docbook@lists.oasis-open.org mailing list. For more information, see
+ http://www.oasis-open.org/docbook/.
