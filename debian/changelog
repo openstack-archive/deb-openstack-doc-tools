@@ -1,6 +1,7 @@
 openstack-doc-tools (0.19-1) experimental; urgency=medium
 
   * New upstream release.
+  * Updated (build-)depends for this release.
 
  -- Thomas Goirand <zigo@debian.org>  Tue, 23 Sep 2014 00:25:46 +0800
 

@@ -10,9 +10,12 @@ Build-Depends: debhelper (>= 9),
                python-all (>= 2.6.6-3~),
                python-pbr (>= 0.6),
                python-sphinx
-Build-Depends-Indep: python-hacking (>= 0.8.0),
+Build-Depends-Indep: python-bashate,
+                     python-babel (>= 1.3),
+                     python-hacking (>= 0.8.0),
+                     python-iso8601 (>= 0.1.9),
                      python-lxml,
-                     python-oslo.config,
+                     python-oslo.config (>= 1.4.0.0~a3),
 Standards-Version: 3.9.5
 Homepage: https://github.com/openstack/openstack-doc-tools
 Vcs-Git: git://anonscm.debian.org/openstack/openstack-doc-tools.git
@@ -21,11 +24,13 @@ Vcs-Browser: http://anonscm.debian.org/gitweb/?p=openstack/openstack-doc-tools.g
 Package: python-openstack-doc-tools
 Architecture: all
 Pre-Depends: dpkg (>= 1.15.6~)
-Depends: libxml2-dev,
+Depends: python-babel (>= 1.3),
+         python-iso8601 (>= 0.1.9),
+         libxml2-dev,
          libxslt-dev,
          maven,
          python-lxml,
-         python-oslo.config,
+         python-oslo.config (>= 1.4.0.0~a3),
          ${misc:Depends},
          ${python:Depends},
          ${sphinxdoc:Depends}
