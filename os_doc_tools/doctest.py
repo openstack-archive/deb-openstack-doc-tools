@@ -39,13 +39,18 @@ import re
 import shutil
 import subprocess
 import sys
+import time
+import urllib2
 
 from lxml import etree
 from oslo.config import cfg
 
 import os_doc_tools
 from os_doc_tools.common import check_output   # noqa
+from os_doc_tools.openstack.common import log
 
+
+LOG = log.getLogger('openstack-doc-test')
 
 # These are files that are known to not pass syntax or niceness checks
 # Add values via --file-exceptions.
@@ -129,7 +134,7 @@ def validation_failed(schema, doc):
             any(log.type_name != "DTD_UNKNOWN_ID" for log in schema.error_log))
 
 
-def verify_section_tags_have_xmid(doc):
+def verify_section_tags_have_xmlid(doc):
     """Check that all section tags have an xml:id attribute.
 
     Will throw an exception if there's at least one missing.
@@ -151,8 +156,8 @@ def verify_attribute_profiling(doc, attribute, known_values):
     supported profiling values.
     """
 
+    msg = []
     ns = {"docbook": "http://docbook.org/ns/docbook"}
-
     path = '//docbook:*[@%s]' % attribute
     for parent in doc.xpath(path, namespaces=ns):
         p_tag = parent.tag
@@ -161,7 +166,7 @@ def verify_attribute_profiling(doc, attribute, known_values):
 
         for att in p_att_list:
             if att not in known_values:
-                raise ValueError(
+                msg.append(
                     "'%s' is not a recognized %s profile on line %d." %
                     (att, attribute, p_line))
 
@@ -173,11 +178,13 @@ def verify_attribute_profiling(doc, attribute, known_values):
             for att in c_att_list:
                 if att not in p_att_list:
                     len_ns = len("{http://docbook.org/ns/docbook}")
-                    raise ValueError(
+                    msg.append(
                         "%s %s profiling (%s) conflicts with %s "
                         "profiling of %s on line %d." %
                         (p_tag[len_ns:], attribute, p_att_list,
                          attribute, c_tag[len_ns:], c_line))
+    if len(msg) > 0:
+        raise ValueError("\n     ".join(msg))
 
 
 def verify_profiling(doc):
@@ -245,6 +252,40 @@ def verify_whitespace_niceness(docfile):
         raise ValueError(msg)
 
 
+def verify_valid_links(doc):
+    """Check that all linked URLs are reachable
+
+    Will throw an exception if there's at least one unreachable URL.
+    """
+    ns = {"docbook": "http://docbook.org/ns/docbook",
+          'xlink': 'http://www.w3.org/1999/xlink'}
+    msg = []
+    for node in doc.xpath('//docbook:link', namespaces=ns):
+        try:
+            url = node.attrib['{http://www.w3.org/1999/xlink}href']
+        except Exception:
+            continue
+
+        try:
+            urllib2.urlopen(url)
+        except urllib2.HTTPError as e:
+            # Ignore some error codes:
+            # 403 (Forbidden) since it often means that the user-agent
+            # is wrong.
+            # 503 (Service Temporarily Unavailable)
+            if e.code not in [403, 503]:
+                e_line = node.sourceline
+                msg.append("URL %s not reachable at line %d, error %s" % (
+                    url, e_line, e))
+        except urllib2.URLError as e:
+            e_line = node.sourceline
+            msg.append("URL %s invalid at line %d, error %s" % (
+                url, e_line, e))
+
+    if len(msg) > 0:
+        raise ValueError("\n    ".join(msg))
+
+
 def error_message(error_log):
     """Return a string that contains the error message.
 
@@ -257,12 +298,8 @@ def error_message(error_log):
     return "\n".join(errs)
 
 
-def www_touched(check_only_www):
-    """Check whether files in www directory are touched.
-
-    If check_only_www is True: Check that only files in www are touched.
-    Otherwise check that files in www are touched.
-    """
+def www_touched():
+    """Check whether files in www directory are touched."""
 
     try:
         git_args = ["git", "diff", "--name-only", "HEAD~1", "HEAD"]
@@ -279,9 +316,28 @@ def www_touched(check_only_www):
         else:
             other_changed = True
 
-    if check_only_www:
-        return www_changed and not other_changed
-    return www_changed
+    return www_changed and not other_changed
+
+
+def only_po_touched():
+    """Check whether only files in locale directory are touched."""
+
+    try:
+        git_args = ["git", "diff", "--name-only", "HEAD~1", "HEAD"]
+        modified_files = check_output(git_args).strip().split()
+    except (subprocess.CalledProcessError, OSError) as e:
+        print("git failed: %s" % e)
+        sys.exit(1)
+
+    locale_changed = False
+    other_changed = False
+    for f in modified_files:
+        if "/locale/" in f and f.endswith((".po", ".pot")):
+            locale_changed = True
+        else:
+            other_changed = True
+
+    return locale_changed and not other_changed
 
 
 def check_modified_affects_all(rootdir):
@@ -355,7 +411,7 @@ def check_deleted_files(rootdir, file_exceptions, verbose):
     deleted_files = get_modified_files(rootdir, "--diff-filter=D")
     if not deleted_files:
         print("No files were removed.\n")
-        return
+        return 0
 
     if verbose:
         print(" Removed files:")
@@ -408,14 +464,15 @@ def check_deleted_files(rootdir, file_exceptions, verbose):
                     missing_reference = True
 
     if missing_reference:
-        print("Failed removed file check, %d files were removed, "
+        print("Check failed, %d files were removed, "
               "%d files checked.\n"
               % (len(deleted_files), no_checked_files))
-        sys.exit(1)
+        return 1
 
-    print("Passed removed file check, %d files were removed, "
+    print("Check passed, %d files were removed, "
           "%d files checked.\n"
           % (len(deleted_files), no_checked_files))
+    return 0
 
 
 def validate_one_json_file(rootdir, path, verbose, check_syntax,
@@ -445,7 +502,8 @@ def validate_one_json_file(rootdir, path, verbose, check_syntax,
 
 
 def validate_one_file(schema, rootdir, path, verbose,
-                      check_syntax, check_niceness, validate_schema):
+                      check_syntax, check_niceness, check_links,
+                      validate_schema):
     """Validate a single file."""
     # We pass schema in as a way of caching it, generating it is expensive
 
@@ -453,14 +511,17 @@ def validate_one_file(schema, rootdir, path, verbose,
     if verbose:
         print(" Validating %s" % os.path.relpath(path, rootdir))
     try:
-        if check_syntax:
+        if check_syntax or check_links:
             doc = etree.parse(path)
-            if validate_schema:
-                if validation_failed(schema, doc):
-                    any_failures = True
-                    print(error_message(schema.error_log))
-                verify_section_tags_have_xmid(doc)
-                verify_profiling(doc)
+            if check_syntax:
+                if validate_schema:
+                    if validation_failed(schema, doc):
+                        any_failures = True
+                        print(error_message(schema.error_log))
+                    verify_section_tags_have_xmlid(doc)
+                    verify_profiling(doc)
+            if check_links:
+                    verify_valid_links(doc)
         if check_niceness:
             verify_whitespace_niceness(path)
     except etree.XMLSyntaxError as e:
@@ -507,7 +568,7 @@ def is_json(filename):
 
 def validate_individual_files(files_to_check, rootdir, verbose,
                               check_syntax=False, check_niceness=False,
-                              ignore_errors=False, is_api_site=False):
+                              check_links=False, is_api_site=False):
     """Validate list of files."""
 
     schema = get_schema(is_api_site)
@@ -518,12 +579,14 @@ def validate_individual_files(files_to_check, rootdir, verbose,
     no_validated = 0
     no_failed = 0
 
-    if check_syntax and check_niceness:
-        print("Checking syntax and niceness of XML files...")
-    elif check_syntax:
-        print("Checking syntax of XML files...")
-    elif check_niceness:
-        print("Checking niceness of XML files...")
+    checks = []
+    if check_links:
+        checks.append("valid URL links")
+    if check_niceness:
+        checks.append("niceness")
+    if check_syntax:
+        checks.append("syntax")
+    print("Checking files for %s..." % (", ".join(checks)))
 
     for f in files_to_check:
         validate_schema = True
@@ -548,30 +611,32 @@ def validate_individual_files(files_to_check, rootdir, verbose,
                                              verbose,
                                              check_syntax,
                                              check_niceness,
+                                             check_links,
                                              validate_schema)
         else:
             any_failures = validate_one_file(schema, rootdir, f,
                                              verbose,
                                              check_syntax,
                                              check_niceness,
+                                             check_links,
                                              validate_schema)
         if any_failures:
             no_failed = no_failed + 1
         no_validated = no_validated + 1
 
     if no_failed > 0:
-        print("Check failed, validated %d XML files with %d failures.\n"
+        print("Check failed, validated %d files with %d failures.\n"
               % (no_validated, no_failed))
-        if not ignore_errors:
-            sys.exit(1)
+        return 1
     else:
-        print("Check passed, validated %d XML files.\n" % no_validated)
+        print("Check passed, validated %d files.\n" % no_validated)
+    return 0
 
 
 def validate_modified_files(rootdir, exceptions, verbose,
                             check_syntax=False, check_niceness=False,
-                            ignore_errors=False, is_api_site=False):
-    """Validate list of modified files."""
+                            check_links=False, is_api_site=False):
+    """Validate list of modified, testable files."""
 
     # Do not select deleted files, just Added, Copied, Modified, Renamed,
     # or Type changed
@@ -579,16 +644,16 @@ def validate_modified_files(rootdir, exceptions, verbose,
     modified_files = [f for f in modified_files if
                       is_testable_file(f, exceptions)]
 
-    validate_individual_files(modified_files, rootdir,
-                              verbose,
-                              check_syntax, check_niceness,
-                              ignore_errors, is_api_site)
+    return validate_individual_files(modified_files, rootdir,
+                                     verbose,
+                                     check_syntax, check_niceness,
+                                     check_links, is_api_site)
 
 
 def validate_all_files(rootdir, exceptions, verbose,
                        check_syntax, check_niceness=False,
-                       ignore_errors=False, is_api_site=False):
-    """Validate all xml files."""
+                       check_links=False, is_api_site=False):
+    """Validate all testable files (XML, WADL, JSON, etc.)."""
 
     files_to_check = []
 
@@ -601,10 +666,10 @@ def validate_all_files(rootdir, exceptions, verbose,
                 path = os.path.abspath(os.path.join(root, f))
                 files_to_check.append(path)
 
-    validate_individual_files(files_to_check, rootdir,
-                              verbose,
-                              check_syntax, check_niceness,
-                              ignore_errors, is_api_site)
+    return validate_individual_files(files_to_check, rootdir,
+                                     verbose,
+                                     check_syntax, check_niceness,
+                                     check_links, is_api_site)
 
 
 def logging_build_book(result):
@@ -648,17 +713,6 @@ def get_publish_path():
     """Return path to use of publishing books."""
 
     return os.path.join(get_gitroot(), 'publish-docs')
-
-
-def publish_www():
-    """Copy www files."""
-
-    publish_path = get_publish_path()
-    www_path = os.path.join(publish_path, 'www')
-    shutil.rmtree(www_path, ignore_errors=True)
-
-    source = os.path.join(get_gitroot(), 'www')
-    shutil.copytree(source, www_path)
 
 
 def ignore_for_publishing(_, names):
@@ -722,8 +776,8 @@ def publish_book(publish_path, book):
 
 def ensure_exists(program):
     """Check that program exists, abort if not."""
-    retcode = subprocess.call("type " + program, shell=True,
-                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    retcode = subprocess.call(['which', program], stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE)
     if retcode != 0:
         print("Program '%s' does not exist, please install!" % program)
         sys.exit(1)
@@ -798,6 +852,28 @@ def build_book(book, publish_path, log_path):
             )
             # Success
             base_book = "install-guide (for Debian, Fedora, openSUSE, Ubuntu)"
+        # HOT template guide
+        elif base_book == 'hot-guide':
+            # Make sure that the build dir is clean
+            if os.path.isdir('build'):
+                shutil.rmtree('build')
+            # Generate the DN XML
+            output = subprocess.check_output(
+                ["make", "xml"],
+                stderr=subprocess.STDOUT
+            )
+            out_file.write(output)
+            # Generate the docbook book
+            output = subprocess.check_output(
+                ["openstack-dn2osdbk", "build/xml", "build/docbook",
+                 "--toplevel", "book"],
+                stderr=subprocess.STDOUT
+            )
+            out_file.write(output)
+            output = subprocess.check_output(
+                ["mvn", "generate-sources", comments, release, "-B"],
+                stderr=subprocess.STDOUT
+            )
         # Repository: identity-api
         elif (cfg.CONF.repo_name == "identity-api"
               and book.endswith("v3")):
@@ -833,7 +909,7 @@ def build_book(book, publish_path, log_path):
                 ["mvn", "generate-sources", comments, release, "-B"],
                 stderr=subprocess.STDOUT
             )
-    except subprocess.CalledProcessError as e:
+    except (subprocess.CalledProcessError, KeyboardInterrupt) as e:
         output = e.output
         returncode = e.returncode
         result = False
@@ -983,6 +1059,8 @@ def find_affected_books(rootdir, book_exceptions, file_exceptions,
                 dirs[:] = [d for d in dirs if d not in ignore_dirs]
 
             for f in files:
+                if not f.endswith('.xml'):
+                    continue
                 f_base = os.path.basename(f)
                 f_abs = os.path.abspath(os.path.join(root, f))
 
@@ -1022,6 +1100,9 @@ def find_affected_books(rootdir, book_exceptions, file_exceptions,
             new_files_to_check = new_files
             new_files = []
             for f in new_files_to_check:
+                if "doc/hot-guide/" in f:
+                    affected_books.add('hot-guide')
+                    continue
                 # Skip bk*.xml files
                 if is_book_master(os.path.basename(f)):
                     book_modified = book_bk[f]
@@ -1092,14 +1173,17 @@ def generate_index_file():
                                  (path, f, f))
                 index_file.write('<br/>\n')
 
+    if os.path.isfile(os.path.join(get_publish_path(), 'www-index.html')):
+        index_file.write('<br/>\n')
+        index_file.write('<a href="www-index.html">list of generated '
+                         'WWW pages</a>\n')
     index_file.write('</body>\n'
                      '</html>\n')
     index_file.close()
 
 
 def build_affected_books(rootdir, book_exceptions, file_exceptions,
-                         force=False, ignore_errors=False,
-                         ignore_dirs=None):
+                         force=False, ignore_dirs=None):
     """Build all the books which are affected by modified files.
 
     Looks for all directories with "pom.xml" and checks if a
@@ -1138,23 +1222,29 @@ def build_affected_books(rootdir, book_exceptions, file_exceptions,
     print("Building all queued %d books now..." % len(books))
 
     # And then queue - since we wait for the first book to finish.
-    for book in sorted(books):
-        if cfg.CONF.debug or not cfg.CONF.parallel:
-            (book, result, output, retcode) = build_book(book,
-                                                         publish_path,
-                                                         log_path)
-            logging_build_book([book, result, output, retcode])
-        else:
-            res = pool.apply_async(build_book, (book, publish_path, log_path),
-                                   callback=logging_build_book)
-            if first_book:
-                first_book = False
-                # The first invocation of maven might download loads of
-                # data locally, we cannot do this in parallel. So, wait here
-                # for the first job to finish before running further mvn jobs.
-                res.get()
-    pool.close()
-    pool.join()
+    try:
+        for book in sorted(books):
+            if cfg.CONF.debug or not cfg.CONF.parallel:
+                (book, result, output, retcode) = build_book(book,
+                                                             publish_path,
+                                                             log_path)
+                logging_build_book([book, result, output, retcode])
+            else:
+                res = pool.apply_async(build_book,
+                                       (book, publish_path, log_path),
+                                       callback=logging_build_book)
+                if first_book:
+                    first_book = False
+                    # The first invocation of maven might download loads of
+                    # data locally, we cannot do this in parallel. So, wait
+                    # here for the first job to finish before running further
+                    # mvn jobs.
+                    res.get()
+        pool.close()
+        pool.join()
+    except KeyboardInterrupt:
+        pool.terminate()
+        pool.join()
 
     any_failures = False
     for book, result, _, _ in sorted(RESULTS_OF_BUILDS,
@@ -1175,14 +1265,15 @@ def build_affected_books(rootdir, book_exceptions, file_exceptions,
                 print("\n%s" % output)
 
         print("Building of books finished with failures.\n")
-        if not ignore_errors:
-            sys.exit(1)
+        return 1
     else:
         print("Building of books finished successfully.\n")
 
     if len(RESULTS_OF_BUILDS) != len(books):
         print("ERROR: %d queued for building but only %d build!" %
               (len(books), len(RESULTS_OF_BUILDS)))
+        return 1
+    return 0
 
 
 def add_exceptions(file_exception, verbose):
@@ -1212,6 +1303,8 @@ cli_OPTS = [
                 help="Check building of books using modified files."),
     cfg.BoolOpt("check-deletions", default=False,
                 help="Check that deleted files are not used."),
+    cfg.BoolOpt("check-links", default=False,
+                help="Check that linked URLs are valid and reachable."),
     cfg.BoolOpt("check-niceness", default=False,
                 help="Check the niceness of files, for example whitespace."),
     cfg.BoolOpt("check-syntax", default=False,
@@ -1219,13 +1312,9 @@ cli_OPTS = [
     cfg.BoolOpt("create-index", default=True,
                 help="When publishing create an index.html file to find books "
                 "in an easy way."),
-    cfg.BoolOpt('debug', default=False,
-                help="Enable debug code."),
     cfg.BoolOpt('force', default=False,
                 help="Force the validation of all files "
                 "and build all books."),
-    cfg.BoolOpt("ignore-errors", default=False,
-                help="Do not exit on failures."),
     cfg.BoolOpt("parallel", default=True,
                 help="Build books in parallel (default)."),
     cfg.BoolOpt("print-unused-files", default=False,
@@ -1234,8 +1323,6 @@ cli_OPTS = [
     cfg.BoolOpt("publish", default=False,
                 help="Setup content in publish-docs directory for "
                 "publishing to external website."),
-    cfg.BoolOpt('verbose', default=False, short='v',
-                help="Verbose execution."),
     cfg.MultiStrOpt("build-file-exception",
                     help="File that will be skipped during delete and "
                          "build checks to generate dependencies. This should "
@@ -1311,14 +1398,16 @@ def handle_options():
         add_build_exceptions(CONF.build_file_exception, CONF.verbose)
 
     if (not CONF.check_build and not CONF.check_deletions and
-       not CONF.check_niceness and not CONF.check_syntax):
+       not CONF.check_niceness and not CONF.check_syntax and
+       not CONF.check_links):
         CONF.check_all = True
 
     if CONF.check_all:
         CONF.check_deletions = True
-        CONF.check_syntax = True
         CONF.check_build = True
+        CONF.check_links = True
         CONF.check_niceness = True
+        CONF.check_syntax = True
 
     if CONF.publish:
         CONF.create_index = False
@@ -1357,12 +1446,17 @@ def handle_options():
 def doctest():
     """Central entrypoint, parses arguments and runs tests."""
 
+    start_time = time.time()
     CONF = cfg.CONF
     print ("\nOpenStack Doc Checks (using openstack-doc-tools version %s)\n"
            % os_doc_tools.__version__)
-
+    try:
+        handle_options()
+    except cfg.Error as e:
+        print(e)
+        return 1
     print_gitinfo()
-    handle_options()
+    errors = 0
 
     doc_path = get_gitroot()
     if CONF.language:
@@ -1372,45 +1466,54 @@ def doctest():
     elif not CONF.api_site:
         doc_path = os.path.join(doc_path, 'doc')
 
-    # Do not publish www directory if we build for external
-    # publishing
-    if (CONF.check_build and
-       (www_touched(False) and not CONF.publish)):
-        publish_www()
-
-    if not CONF.force and www_touched(True):
+    if not CONF.force and www_touched():
         print("Only files in www directory changed, nothing to do.\n")
         return
 
-    if CONF.check_syntax or CONF.check_niceness:
+    # Build everything if we publish so that regularly all manuals are
+    # published, for testing ignore the locale directories.
+    if (not CONF.force and not CONF.publish and not CONF.language
+            and only_po_touched()):
+        print("Only files in locale directories changed, nothing to do.\n")
+        return
+
+    if CONF.check_syntax or CONF.check_niceness or CONF.check_links:
         if CONF.force:
-            validate_all_files(doc_path, FILE_EXCEPTIONS,
-                               CONF.verbose,
-                               CONF.check_syntax,
-                               CONF.check_niceness,
-                               CONF.ignore_errors,
-                               CONF.api_site)
+            errors += validate_all_files(doc_path, FILE_EXCEPTIONS,
+                                         CONF.verbose,
+                                         CONF.check_syntax,
+                                         CONF.check_niceness,
+                                         CONF.check_links,
+                                         CONF.api_site)
         else:
-            validate_modified_files(doc_path, FILE_EXCEPTIONS,
-                                    CONF.verbose,
-                                    CONF.check_syntax,
-                                    CONF.check_niceness,
-                                    CONF.ignore_errors,
-                                    CONF.api_site)
+            errors += validate_modified_files(doc_path, FILE_EXCEPTIONS,
+                                              CONF.verbose,
+                                              CONF.check_syntax,
+                                              CONF.check_niceness,
+                                              CONF.check_links,
+                                              CONF.api_site)
 
     if CONF.check_deletions:
-        check_deleted_files(doc_path, BUILD_FILE_EXCEPTIONS, CONF.verbose)
+        errors += check_deleted_files(doc_path, BUILD_FILE_EXCEPTIONS,
+                                      CONF.verbose)
 
     if CONF.check_build:
         # Some programs are called in subprocesses,  make sure that they
         # really exist.
         ensure_exists("mvn")
-        build_affected_books(doc_path, BOOK_EXCEPTIONS,
-                             BUILD_FILE_EXCEPTIONS,
-                             CONF.force,
-                             CONF.ignore_errors,
-                             CONF.ignore_dir)
+        errors += build_affected_books(doc_path, BOOK_EXCEPTIONS,
+                                       BUILD_FILE_EXCEPTIONS,
+                                       CONF.force,
+                                       CONF.ignore_dir)
 
+    elapsed_time = (time.time() - start_time)
+    print ("Run time was: %.2f seconds." % elapsed_time)
+    if errors == 0:
+        print("Congratulations, all tests passed!")
+        return 0
+    else:
+        print("Some tests failed!")
+        return 1
 
 if __name__ == "__main__":
     sys.exit(doctest())

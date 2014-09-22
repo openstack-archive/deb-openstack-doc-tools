@@ -137,17 +137,21 @@ def changeXMLLangSetting(xmlFile, language):
     newxml = newxml.replace('SYSTEM "openstack.ent">',
                             'SYSTEM "openstack.ent"> %openstack;')
 
-    dom = xml.dom.minidom.parseString(newxml)
+    try:
+        dom = xml.dom.minidom.parseString(newxml)
+    except xml.parsers.expat.ExpatError as e:
+        print("Error: parsing of file '%s' for language '%s' "
+              "with Expat failed: %s." % (xmlFile, language, e))
+        sys.exit(5)
+
     root = dom.documentElement
     root.setAttribute("xml:lang", language[:2])
     fileObj = codecs.open(xmlFile, "wb", encoding="utf-8")
 
-    # add namespace to link
     nodelists = root.getElementsByTagName("link")
     for node in nodelists:
         if node.hasAttribute("href"):
             node.setAttribute("xlink:href", node.getAttribute("href"))
-            node.setAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink")
         if node.hasAttribute("title"):
             node.setAttribute("xlink:title", node.getAttribute("title"))
     dom.writexml(fileObj)

@@ -28,6 +28,16 @@ from lxml import etree
 
 PROJECTS = ['ceilometer', 'cinder', 'glance', 'heat', 'keystone', 'neutron',
             'nova', 'swift', 'trove']
+MASTER_RELEASE = 'Juno'
+CODENAME_TITLE = {'ceilometer': 'Telemetry',
+                  'cinder': 'OpenStack Block Storage',
+                  'glance': 'OpenStack Image Service',
+                  'heat': 'Orchestration',
+                  'keystone': 'OpenStack Identity',
+                  'neutron': 'OpenStack Networking',
+                  'nova': 'OpenStack Compute',
+                  'swift': 'OpenStack Object Storage',
+                  'trove': 'Database Service'}
 
 
 def setup_venv(branch, novenvupdate):
@@ -38,6 +48,7 @@ def setup_venv(branch, novenvupdate):
     if not os.path.exists('venv'):
         os.mkdir('venv')
     args = ["./autohelp-wrapper", "-b", branch, "-e", dirname, "setup"]
+    args.extend(PROJECTS)
     if subprocess.call(args) != 0:
         print("Impossible to create the %s environment." % branch)
         sys.exit(1)
@@ -68,7 +79,10 @@ def get_options(project, branch, args):
     serialized = subprocess.check_output(cmd, shell=True,
                                          env={'VIRTUAL_ENV': dirname,
                                               'PATH': path})
-    return pickle.loads(serialized)
+    sys.path.insert(0, repo_path)
+    ret = pickle.loads(serialized)
+    sys.path.pop(0)
+    return ret
 
 
 def _cmpopts(x, y):
@@ -176,16 +190,23 @@ def format_option_name(name):
         section, name = name.split('/')
     except ValueError:
         # name without a section ('log_dir')
-        return "[DEFAULT]/%s" % name
+        return "[DEFAULT] %s" % name
 
     try:
         # If we're dealing with swift, we'll have a filename to extract
         # ('proxy-server|filter:tempurl/use')
         filename, section = section.split('|')
-        return "%s.conf: [%s]/%s" % (filename, section, name)
+        return "%s.conf: [%s] %s" % (filename, section, name)
     except ValueError:
         # section but no filename ('database/connection')
-        return "[%s]/%s" % (section, name)
+        return "[%s] %s" % (section, name)
+
+
+def release_from_branch(branch):
+    if branch == 'master':
+        return MASTER_RELEASE
+    else:
+        return branch.replace('stable/', '')
 
 
 def generate_docbook(project, new_branch, old_list, new_list):
@@ -205,7 +226,10 @@ def generate_docbook(project, new_branch, old_list, new_list):
                                  "lives in the openstack-doc-tools "
                                  "repository. "))
     title = etree.Element("title")
-    title.text = "New, updated and deprecated options for %s" % project
+    title.text = ("New, updated and deprecated options "
+                  "in %(release)s for %(project)s" %
+                  {'release': release_from_branch(new_branch),
+                   'project': CODENAME_TITLE[project]})
     section.append(title)
 
     # New options
@@ -295,7 +319,7 @@ def main():
 
         release = args.new_branch.replace('stable/', '')
         xml = generate_docbook(project, release, old_list, new_list)
-        filename = ("%(project)s-conf-changes-%(release)s.xml" %
+        filename = ("%(project)s-conf-changes.xml" %
                     {'project': project, 'release': release})
         if not os.path.exists(args.target):
             os.makedirs(args.target)

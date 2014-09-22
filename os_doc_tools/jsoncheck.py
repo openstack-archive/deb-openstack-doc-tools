@@ -54,20 +54,24 @@ def check_formatting(path):
     _process_file(path, formatting='check')
 
 
-def fix_formatting(path):
+def fix_formatting(path, verbose=False):
     """Fix formatting of one JSON file."""
-    _process_file(path, formatting='fix')
+    _process_file(path, formatting='fix', verbose=verbose)
 
 # -----------------------------------------------------------------------------
 # Implementation details
 # -----------------------------------------------------------------------------
 
 
-def _indent_note(errstr):
+def _indent_note(note):
     """Indents and wraps a string."""
-    return textwrap.fill(errstr, initial_indent=8 * ' ',
-                         subsequent_indent=12 * ' ',
-                         width=80)
+    indented_note = []
+    # Split into single lines in case the argument is pre-formatted.
+    for line in note.splitlines():
+        indented_note.append(textwrap.fill(line, initial_indent=8 * ' ',
+                             subsequent_indent=12 * ' ',
+                             width=80))
+    return "\n".join(indented_note)
 
 
 def _get_demjson_diagnostics(raw):
@@ -89,12 +93,12 @@ def _parse_json(raw):
     try:
         parsed = json.loads(raw, object_pairs_hook=collections.OrderedDict)
     except ValueError as err:
-        note = _indent_note(str(err))
+        note = str(err)
         # if demjson is available, print its diagnostic string as well
         if demjson:
             demerr = _get_demjson_diagnostics(raw)
             if demerr:
-                note += "\n" + _indent_note(demerr)
+                note += "\n" + demerr
         raise ParserException(note)
     else:
         return parsed
@@ -106,17 +110,19 @@ def _format_parsed_json(parsed):
                       indent=4)
 
 
-def _process_file(path, formatting=None):
+def _process_file(path, formatting=None, verbose=False):
     """Check syntax/formatting and fix formatting of a JSON file.
 
-    :param formatting: one of 'check' or 'fix'
+    :param formatting: one of 'check' or 'fix' (default: None)
+
+    Raises ValueError if JSON syntax is invalid or reformatting needed.
     """
     with open(path, 'r') as infile:
         raw = infile.read()
         try:
             parsed = _parse_json(raw)
         except ParserException as err:
-            print("%s\n%s" % (path, err))
+            raise ValueError(err)
         else:
             if formatting in ('check', 'fix'):
                 formatted = _format_parsed_json(parsed)
@@ -124,13 +130,14 @@ def _process_file(path, formatting=None):
                     if formatting == "fix":
                         with open(path, 'w') as outfile:
                             outfile.write(formatted)
-                        errstr = _indent_note("Reformatted")
+                        if verbose:
+                            print("%s\n%s" % (path,
+                                              _indent_note("Reformatted")))
                     else:
-                        errstr = _indent_note("Reformatting needed")
-                    print("%s\n%s" % (path, errstr))
-            else:
+                        raise ValueError("Reformatting needed")
+            elif formatting is not None:
                 # for the benefit of external callers
-                return ValueError("formatting arg must be 'check' or 'fix'")
+                raise ValueError("Called with invalid formatting value.")
 
 
 def main():
@@ -141,8 +148,15 @@ def main():
                         help='check or fix formatting of JSON files')
     args = parser.parse_args()
 
+    exit_status = 0
     for path in args.files:
-        _process_file(path, args.formatting)
+        try:
+            _process_file(path, args.formatting, verbose=True)
+        except ValueError as err:
+            print("%s\n%s" % (path, _indent_note(str(err))))
+            exit_status = 1
+
+    return exit_status
 
 if __name__ == "__main__":
     sys.exit(main())

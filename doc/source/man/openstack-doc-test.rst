@@ -14,7 +14,8 @@ openstack-doc-test [options]
 DESCRIPTION
 ===========
 
-openstack-doc-test allows to test the validity of the OpenStack documentation content.
+openstack-doc-test allows to test the validity of the OpenStack
+documentation content.
 
 OPTIONS
 =======
@@ -33,14 +34,17 @@ OPTIONS
   **--check-build**
         Try to build books using modified files.
 
-  **--check-syntax**
-        Check the syntax of modified files.
-
   **--check-deletions**
        Check that deleted files are not used.
 
+  **--check-links**
+       Check that linked URLs are valid and reachable.
+
   **--check-niceness**
        Check the niceness of files, for example whitespace.
+
+  **--check-syntax**
+        Check the syntax of modified files.
 
   **--check-all**
        Run all checks (default if no arguments are given).
@@ -64,9 +68,6 @@ OPTIONS
   **--ignore-dir IGNORE_DIR**
       Directory to ignore for building of manuals. The parameter can
       be passed multiple times to add several directories.
-
-  **--ignore-errors**
-      Do not exit on failures.
 
   **--language LANGUAGE, -l LANGUAGE**
       Build translated manual for language in path generate/$LANGUAGE .
