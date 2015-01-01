@@ -1,6 +1,27 @@
 Release notes
 =============
 
+0.21.1
+------
+
+* ``jsoncheck``: have formatted JSON files end with a newline (lp:bug 1403159)
+
+0.21
+----
+
+* ``openstack-doc-test``: New option ``--url-exception`` to ignore
+  URLs in link check. Use jsoncheck in tests for more better tests and
+  output.
+* ``openstack-auto-commands``: Update list of supported commands to
+  include ironic, sahara
+* ``openstack-dn2osdbk``: Various fixes.
+
+0.20
+----
+
+* ``openstack-doc-test``: Check for a ``\n`` in the last line of a file.
+* ``openstack-dn2osdbk``: Properly handle internal references.
+
 0.19
 ----
 

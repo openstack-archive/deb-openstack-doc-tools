@@ -18,7 +18,7 @@ To install Maven 3 for Ubuntu 12.04 and later, and Debian wheezy and later::
 
 On Fedora::
 
-    yum install maven3
+    yum install maven
 
 You need to have Python 2.7 installed for using the tools.
 
@@ -44,6 +44,10 @@ On Ubuntu::
     apt-get install python-lxml
 
 For building from source,  install the dependencies of lxml.
+
+On Fedora::
+
+    yum install python-devel libxml2-devel libxslt-devel
 
 On openSUSE::
 
@@ -109,16 +113,15 @@ We welcome all types of contributions, from blueprint designs to documentation
 to testing to deployment scripts.
 
 If you would like to contribute to the development,
-you must follow the steps in the "If you're a developer, start here"
-section of this page:
+you must follow the steps in this page:
 
-   http://wiki.openstack.org/HowToContribute
+   http://docs.openstack.org/infra/manual/developers.html
 
 Once those steps have been completed, changes to OpenStack
 should be submitted for review via the Gerrit tool, following
 the workflow documented at:
 
-   http://wiki.openstack.org/GerritWorkflow
+   http://docs.openstack.org/infra/manual/developers.html#development-workflow
 
 Pull requests submitted through GitHub will be ignored.
 

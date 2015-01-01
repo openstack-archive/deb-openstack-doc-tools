@@ -31,7 +31,6 @@ Requires:
 '''
 
 import gzip
-import json
 import multiprocessing
 import operator
 import os
@@ -47,6 +46,7 @@ from oslo.config import cfg
 
 import os_doc_tools
 from os_doc_tools.common import check_output   # noqa
+from os_doc_tools import jsoncheck
 from os_doc_tools.openstack.common import log
 
 
@@ -62,6 +62,10 @@ BUILD_FILE_EXCEPTIONS = []
 
 # These are books that we aren't checking yet.
 BOOK_EXCEPTIONS = []
+
+# These URLs will not be checked for reachability. Add values via
+# --url-exception.
+URL_EXCEPTIONS = []
 
 # Mappings from books to build directories under target
 BOOK_MAPPINGS = {}
@@ -193,6 +197,17 @@ def verify_profiling(doc):
     verify_attribute_profiling(doc, "audience", KNOWN_AUDIENCE_VALUES)
 
 
+def verify_newline_end_of_file(docfile):
+    """Check that there is a newline at the end of file."""
+
+    with open(docfile, 'r') as fp:
+        lines = fp.readlines()
+        lastline = lines[-1]
+
+    if not lastline.endswith('\n'):
+        raise ValueError('last line of a file must end with a \\n')
+
+
 def verify_whitespace_niceness(docfile):
     """Check that no unnecessary whitespaces are used."""
     checks = [
@@ -264,6 +279,9 @@ def verify_valid_links(doc):
         try:
             url = node.attrib['{http://www.w3.org/1999/xlink}href']
         except Exception:
+            continue
+
+        if url in URL_EXCEPTIONS:
             continue
 
         try:
@@ -475,6 +493,15 @@ def check_deleted_files(rootdir, file_exceptions, verbose):
     return 0
 
 
+def indent(text, spaces):
+    """Indent each line of a string by given number of spaces.
+
+    The text argument is passed through str() first to turn objects such
+    as exceptions into strings.
+    """
+    return ''.join((spaces * ' ') + i for i in str(text).splitlines(True))
+
+
 def validate_one_json_file(rootdir, path, verbose, check_syntax,
                            check_niceness):
     """Validate a single JSON file."""
@@ -485,15 +512,24 @@ def validate_one_json_file(rootdir, path, verbose, check_syntax,
 
     try:
         if check_syntax:
-            json_file = open(path, 'rb')
-            json.load(json_file)
+            jsoncheck.check_syntax(path)
     except ValueError as e:
         any_failures = True
-        print("  Invalid JSON file %s: %s" %
-              (os.path.relpath(path, rootdir), e))
+        print("  Invalid JSON file %s:\n%s" %
+              (os.path.relpath(path, rootdir), indent(e, 4)))
+    else:
+        try:
+            if check_niceness:
+                jsoncheck.check_formatting(path)
+        except ValueError as e:
+            any_failures = True
+            print("  %s:\n%s" % (os.path.relpath(path, rootdir),
+                                 indent(e, 4)))
+
     try:
         if check_niceness:
             verify_whitespace_niceness(path)
+            verify_newline_end_of_file(path)
     except ValueError as e:
         any_failures = True
         print("  %s: %s" % (os.path.relpath(path, rootdir), e))
@@ -524,6 +560,7 @@ def validate_one_file(schema, rootdir, path, verbose,
                     verify_valid_links(doc)
         if check_niceness:
             verify_whitespace_niceness(path)
+            verify_newline_end_of_file(path)
     except etree.XMLSyntaxError as e:
         any_failures = True
         print("  %s: %s" % (os.path.relpath(path, rootdir), e))
@@ -937,6 +974,86 @@ def is_book_master(filename):
             filename == 'openstack-glossary.xml')
 
 
+def print_unused(rootdir, ignore_dirs, included_by):
+    """Print list of files that are not included anywhere."""
+
+    if cfg.CONF.print_unused_files:
+        print("Checking for files that are not included anywhere...")
+        print(" Note: This only looks at files included by an .xml file "
+              "but not for files included by other files like .wadl.")
+        for root, dirs, files in os.walk(rootdir):
+            dirs[:] = filter_dirs(dirs)
+
+            # Filter out directories to be ignored
+            if ignore_dirs:
+                dirs[:] = [d for d in dirs if d not in ignore_dirs]
+
+            for f in files:
+                if not f.endswith('.xml'):
+                    continue
+                f_base = os.path.basename(f)
+                f_abs = os.path.abspath(os.path.join(root, f))
+
+                if (f_abs not in included_by and f_base != "pom.xml"
+                   and not is_book_master(f_base)):
+                    f_rel = os.path.relpath(f_abs, rootdir)
+                    print ("  %s " % f_rel)
+        print("\n")
+
+
+def generate_affected_books(rootdir, book_bk, ignore_dirs, abs_ignore_dirs,
+                            included_by):
+    """Generate list of affected books."""
+
+    affected_books = set()
+
+    # Generate list of modified_files
+    # Do not select deleted files, just Added, Copied, Modified, Renamed,
+    # or Type changed
+    modified_files = get_modified_files(rootdir, "--diff-filter=ACMRT")
+    modified_files = [os.path.abspath(f) for f in modified_files]
+    if ignore_dirs:
+        for idir in abs_ignore_dirs:
+            non_ignored_files = []
+            for f in modified_files:
+                if not f.startswith(idir):
+                    non_ignored_files.append(f)
+            modified_files = non_ignored_files
+
+    # 2. Find all modified files and where they are included
+
+    # List of files that we have to iterate over, these are affected
+    # by some modification
+    new_files = modified_files
+
+    # All files that are affected (either directly or indirectly)
+    affected_files = set(modified_files)
+
+    # 3. Iterate over files that have includes on modified files
+    # and build a closure - the set of all files (affected_files)
+    # that have a path to a modified file via includes.
+    while len(new_files) > 0:
+        new_files_to_check = new_files
+        new_files = []
+        for f in new_files_to_check:
+            if "doc/hot-guide/" in f:
+                affected_books.add('hot-guide')
+                continue
+            # Skip bk*.xml files
+            if is_book_master(os.path.basename(f)):
+                book_modified = book_bk[f]
+                if book_modified not in affected_books:
+                    affected_books.add(book_modified)
+                continue
+            if f not in included_by:
+                continue
+            for g in included_by[f]:
+                if g not in affected_files:
+                    new_files.append(g)
+                    affected_files.add(g)
+    return affected_books
+
+
 def find_affected_books(rootdir, book_exceptions, file_exceptions,
                         force, ignore_dirs):
     """Check which books are affected by modified files.
@@ -946,7 +1063,6 @@ def find_affected_books(rootdir, book_exceptions, file_exceptions,
     book_root = rootdir
 
     books = []
-    affected_books = set()
 
     build_all_books = (force or check_modified_affects_all(rootdir) or
                        cfg.CONF.only_book)
@@ -1046,84 +1162,20 @@ def find_affected_books(rootdir, book_exceptions, file_exceptions,
                     else:
                         included_by[href_abs] = set([f_abs])
 
-    # Print list of files that are not included anywhere
-    if cfg.CONF.print_unused_files:
-        print("Checking for files that are not included anywhere...")
-        print(" Note: This only looks at files included by an .xml file "
-              "but not for files included by other files like .wadl.")
-        for root, dirs, files in os.walk(rootdir):
-            dirs[:] = filter_dirs(dirs)
-
-            # Filter out directories to be ignored
-            if ignore_dirs:
-                dirs[:] = [d for d in dirs if d not in ignore_dirs]
-
-            for f in files:
-                if not f.endswith('.xml'):
-                    continue
-                f_base = os.path.basename(f)
-                f_abs = os.path.abspath(os.path.join(root, f))
-
-                if (f_abs not in included_by and f_base != "pom.xml"
-                   and not is_book_master(f_base)):
-                    f_rel = os.path.relpath(f_abs, rootdir)
-                    print ("  %s " % f_rel)
-        print("\n")
-
-    if not build_all_books:
-        # Generate list of modified_files
-        # Do not select deleted files, just Added, Copied, Modified, Renamed,
-        # or Type changed
-        modified_files = get_modified_files(rootdir, "--diff-filter=ACMRT")
-        modified_files = [os.path.abspath(f) for f in modified_files]
-        if ignore_dirs:
-            for idir in abs_ignore_dirs:
-                non_ignored_files = []
-                for f in modified_files:
-                    if not f.startswith(idir):
-                        non_ignored_files.append(f)
-                modified_files = non_ignored_files
-
-        # 2. Find all modified files and where they are included
-
-        # List of files that we have to iterate over, these are affected
-        # by some modification
-        new_files = modified_files
-
-        # All files that are affected (either directly or indirectly)
-        affected_files = set(modified_files)
-
-        # 3. Iterate over files that have includes on modified files
-        # and build a closure - the set of all files (affected_files)
-        # that have a path to a modified file via includes.
-        while len(new_files) > 0:
-            new_files_to_check = new_files
-            new_files = []
-            for f in new_files_to_check:
-                if "doc/hot-guide/" in f:
-                    affected_books.add('hot-guide')
-                    continue
-                # Skip bk*.xml files
-                if is_book_master(os.path.basename(f)):
-                    book_modified = book_bk[f]
-                    if book_modified not in affected_books:
-                        affected_books.add(book_modified)
-                    continue
-                if f not in included_by:
-                    continue
-                for g in included_by[f]:
-                    if g not in affected_files:
-                        new_files.append(g)
-                        affected_files.add(g)
+    print_unused(rootdir, ignore_dirs, included_by)
 
     if cfg.CONF.only_book:
         print("Building specified books.")
     elif build_all_books:
         print("Building all books.")
-    elif affected_books:
-        books = affected_books
     else:
-        print("No books are affected by modified files. Building all books.")
+        affected_books = generate_affected_books(rootdir, book_bk, ignore_dirs,
+                                                 abs_ignore_dirs, included_by)
+        if affected_books:
+            books = affected_books
+        else:
+            print("No books are affected by modified files. "
+                  "Building all books.")
 
     return books
 
@@ -1294,6 +1346,15 @@ def add_build_exceptions(build_file_exception, verbose):
         BUILD_FILE_EXCEPTIONS.append(entry)
 
 
+def add_url_exceptions(url_exception, verbose):
+    """Add list of exceptions from url_exception."""
+
+    for entry in url_exception:
+        if verbose:
+            print(" Adding URL to ignore list: %s" % entry)
+        URL_EXCEPTIONS.append(entry)
+
+
 cli_OPTS = [
     cfg.BoolOpt("api-site", default=False,
                 help="Enable special handling for api-site repository."),
@@ -1339,6 +1400,9 @@ cli_OPTS = [
                "generate/$LANGUAGE ."),
     cfg.MultiStrOpt('only-book', default=None,
                     help="Build each specified manual."),
+    cfg.MultiStrOpt("url-exception",
+                    help="URL that will be skipped during reachability "
+                         "check."),
 ]
 
 OPTS = [
@@ -1396,6 +1460,9 @@ def handle_options():
 
     if CONF.build_file_exception:
         add_build_exceptions(CONF.build_file_exception, CONF.verbose)
+
+    if CONF.url_exception:
+        add_url_exceptions(CONF.url_exception, CONF.verbose)
 
     if (not CONF.check_build and not CONF.check_deletions and
        not CONF.check_niceness and not CONF.check_syntax and

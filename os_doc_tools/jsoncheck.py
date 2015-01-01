@@ -68,7 +68,7 @@ def _indent_note(note):
     indented_note = []
     # Split into single lines in case the argument is pre-formatted.
     for line in note.splitlines():
-        indented_note.append(textwrap.fill(line, initial_indent=8 * ' ',
+        indented_note.append(textwrap.fill(line, initial_indent=4 * ' ',
                              subsequent_indent=12 * ' ',
                              width=80))
     return "\n".join(indented_note)
@@ -107,7 +107,7 @@ def _parse_json(raw):
 def _format_parsed_json(parsed):
     """Pretty-print JSON file content while retaining key order."""
     return json.dumps(parsed, sort_keys=False, separators=(',', ': '),
-                      indent=4)
+                      indent=4) + "\n"
 
 
 def _process_file(path, formatting=None, verbose=False):

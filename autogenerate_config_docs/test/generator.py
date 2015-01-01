@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
 
 # Copyright 2012 SINA Corporation
 # All Rights Reserved.
@@ -15,8 +14,6 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
-#
-# @author: Zhongyue Luo, SINA Corporation.
 #
 # ====================
 # Leaving original copyright/licensing info for now... though I made
