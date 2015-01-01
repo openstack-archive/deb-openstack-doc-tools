@@ -1,6 +1,7 @@
 openstack-doc-tools (0.21.1-1) UNRELEASED; urgency=medium
 
   * New upstream release.
+  * Fixed (build-)depends for this release.
 
  -- Thomas Goirand <zigo@debian.org>  Thu, 01 Jan 2015 23:07:24 +0100
 
