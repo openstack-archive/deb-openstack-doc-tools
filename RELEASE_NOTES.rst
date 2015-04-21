@@ -1,6 +1,27 @@
 Release notes
 =============
 
+0.24
+----
+
+* Added ``doc-tools-update-cli-reference``, a wrapper script to update
+  CLI references in the ``openstack-manuals`` repository.
+* Handle guides that published without a content/ sub directory.
+* Various fixes for auto generating commands and options.
+* Handle translation of RST guides.
+
+0.23
+----
+
+* ``openstack-doc-test``: Don't build all books if only RST files are
+  changed.
+
+0.22
+----
+
+* ``openstack-doc-test``: New niceness check to avoid specific unicode
+  characters; new option --ignore-book to not build a book.
+
 0.21.1
 ------
 

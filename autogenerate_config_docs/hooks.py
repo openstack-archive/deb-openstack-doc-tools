@@ -35,5 +35,15 @@ def glance_store_config():
         pass
 
 
+def nova_spice():
+    import os
+    # nova.cmd.__init__ before kilo requires to be imported before eventlet is.
+    # Since we can't make sure of that, we define this envvar to let nova know
+    # that the import is OK (see nova/cmd/__init__.py)
+    os.environ['EVENTLET_NO_GREENDNS'] = 'yes'
+    import nova.cmd.spicehtml5proxy  # noqa
+
+
 HOOKS = {'keystone.common.config': keystone_config,
-         'glance.common.config': glance_store_config}
+         'glance.common.config': glance_store_config,
+         'nova.spice': nova_spice}

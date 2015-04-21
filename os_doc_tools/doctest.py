@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf8 -*-
 
 # Licensed under the Apache License, Version 2.0 (the "License"); you may
 # not use this file except in compliance with the License. You may obtain
@@ -208,6 +209,23 @@ def verify_newline_end_of_file(docfile):
         raise ValueError('last line of a file must end with a \\n')
 
 
+def verify_unicode_niceness(docfile):
+    """Check that no unwanted unicode charaters are used."""
+
+    invalid_characters = '“”‘’―—'
+
+    affected_lines = []
+    lc = 0
+    for line in open(docfile, 'r'):
+        lc += 1
+        any(c in line for c in invalid_characters)
+
+    if len(affected_lines):
+        raise ValueError("unwanted unicode charaters (one of %s) "
+                         "found in line(s): %" % (" ".join(invalid_characters),
+                                                  ", ".join(affected_lines)))
+
+
 def verify_whitespace_niceness(docfile):
     """Check that no unnecessary whitespaces are used."""
     checks = [
@@ -356,6 +374,27 @@ def only_po_touched():
             other_changed = True
 
     return locale_changed and not other_changed
+
+
+def only_rst_touched():
+    """Check whether only RST files are touched."""
+
+    try:
+        git_args = ["git", "diff", "--name-only", "HEAD~1", "HEAD"]
+        modified_files = check_output(git_args).strip().split()
+    except (subprocess.CalledProcessError, OSError) as e:
+        print("git failed: %s" % e)
+        sys.exit(1)
+
+    rst_changed = False
+    other_changed = False
+    for f in modified_files:
+        if f.endswith(".rst"):
+            rst_changed = True
+        else:
+            other_changed = True
+
+    return rst_changed and not other_changed
 
 
 def check_modified_affects_all(rootdir):
@@ -530,6 +569,7 @@ def validate_one_json_file(rootdir, path, verbose, check_syntax,
         if check_niceness:
             verify_whitespace_niceness(path)
             verify_newline_end_of_file(path)
+            verify_unicode_niceness(path)
     except ValueError as e:
         any_failures = True
         print("  %s: %s" % (os.path.relpath(path, rootdir), e))
@@ -561,6 +601,7 @@ def validate_one_file(schema, rootdir, path, verbose,
         if check_niceness:
             verify_whitespace_niceness(path)
             verify_newline_end_of_file(path)
+            verify_unicode_niceness(path)
     except etree.XMLSyntaxError as e:
         any_failures = True
         print("  %s: %s" % (os.path.relpath(path, rootdir), e))
@@ -1209,6 +1250,11 @@ def generate_index_file():
             index_file.write('<a href="%s/content/index.html">%s</a>\n' %
                              (path, path))
             index_file.write('<br/>\n')
+        elif os.path.isfile(os.path.join(root, 'index.html')):
+            path = os.path.relpath(root, publish_path)
+            index_file.write('<a href="%s/index.html">%s</a>\n' %
+                             (path, path))
+            index_file.write('<br/>\n')
 
         if os.path.isfile(os.path.join(root, 'api-ref.html')):
             path = os.path.relpath(root, publish_path)
@@ -1235,7 +1281,8 @@ def generate_index_file():
 
 
 def build_affected_books(rootdir, book_exceptions, file_exceptions,
-                         force=False, ignore_dirs=None):
+                         force=False, ignore_dirs=None,
+                         ignore_books=None):
     """Build all the books which are affected by modified files.
 
     Looks for all directories with "pom.xml" and checks if a
@@ -1251,6 +1298,9 @@ def build_affected_books(rootdir, book_exceptions, file_exceptions,
 
     books = find_affected_books(rootdir, book_exceptions,
                                 file_exceptions, force, ignore_dirs)
+
+    if ignore_books:
+        books = [b for b in books if os.path.basename(b) not in ignore_books]
 
     # Remove cache content which can cause build failures
     shutil.rmtree(os.path.expanduser("~/.fop"),
@@ -1395,6 +1445,10 @@ cli_OPTS = [
                     help="Directory to ignore for building of manuals. The "
                          "parameter can be passed multiple times to add "
                          "several directories."),
+    cfg.MultiStrOpt("ignore-book",
+                    help="Book to ignore when building manuals. The "
+                         "parameter can be passed multiple times to add "
+                         "several books."),
     cfg.StrOpt('language', default=None, short='l',
                help="Build translated manual for language in path "
                "generate/$LANGUAGE ."),
@@ -1543,6 +1597,12 @@ def doctest():
             and only_po_touched()):
         print("Only files in locale directories changed, nothing to do.\n")
         return
+    # If only RST files are touched, there's nothing to do.
+    if (not CONF.force and only_rst_touched()):
+        print("Only RST files changed, nothing to do.\n")
+        if cfg.CONF.create_index:
+            generate_index_file()
+        return
 
     if CONF.check_syntax or CONF.check_niceness or CONF.check_links:
         if CONF.force:
@@ -1571,7 +1631,8 @@ def doctest():
         errors += build_affected_books(doc_path, BOOK_EXCEPTIONS,
                                        BUILD_FILE_EXCEPTIONS,
                                        CONF.force,
-                                       CONF.ignore_dir)
+                                       CONF.ignore_dir,
+                                       CONF.ignore_book)
 
     elapsed_time = (time.time() - start_time)
     print ("Run time was: %.2f seconds." % elapsed_time)

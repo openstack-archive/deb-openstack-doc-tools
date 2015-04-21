@@ -32,7 +32,7 @@ from autohelp import OptionsCache  # noqa
 
 DBK_NS = ".//{http://docbook.org/ns/docbook}"
 
-BASE_XML = '''<?xml version="1.0" encoding="UTF-8"?>
+BASE_XML = '''<?xml version="1.0"?>
 <para xmlns="http://docbook.org/ns/docbook"
   version="5.0">
 <!-- The tool that generated this table lives in the
@@ -40,7 +40,7 @@ BASE_XML = '''<?xml version="1.0" encoding="UTF-8"?>
      this file will *not* be lost if you run the script again. -->
   <table rules="all">
     <caption>Description of configuration options for
-        <literal>[%s]</literal> in <literal>%s.conf</literal>
+        <literal>[%s]</literal> in <filename>%s.conf</filename>
     </caption>
     <col width="50%%"/>
     <col width="50%%"/>
@@ -90,9 +90,9 @@ def get_existing_options(optfiles):
         for tr in trlist:
             try:
                 col1, col2 = tr.findall(DBK_NS + "td")
-                optentry = col1.text
-                option = optentry.split('=', 1)[0].strip()
-                helptext = col2.text
+                option = col1.find(DBK_NS + "option").text
+                helptext = etree.tostring(col2, xml_declaration=False,
+                                          method="text")
             except IndexError:
                 continue
             if option not in options or 'No help text' in options[option]:
@@ -186,7 +186,11 @@ def write_docbook(options, manuals_repo):
         tbody.append(tr)
 
         td = etree.Element('td')
-        td.text = "%s = %s" % (oslo_opt.name, oslo_opt.default)
+        option_xml = etree.SubElement(td, 'option')
+        option_xml.text = "%s" % oslo_opt.name
+        option_xml.tail = " = "
+        replaceable_xml = etree.SubElement(td, 'replaceable')
+        replaceable_xml.text = "%s" % oslo_opt.default
         tr.append(td)
 
         td = etree.Element('td')
@@ -245,7 +249,7 @@ def read_options(swift_repo, manuals_repo, verbose):
                 else:
                     option_desc = 'No help text available for this option.'
                     if verbose > 0:
-                        print(parsed_line[0] + "has no help text")
+                        print(parsed_line[0] + " has no help text")
 
                 # \xa0 is a non-breacking space
                 name = parsed_line[0]
@@ -304,7 +308,7 @@ def main():
         write_docbook(options, args.manuals_repo)
 
     elif args.subcommand == 'dump':
-        dump_options(options)
+        options.dump()
 
     return 0
 
