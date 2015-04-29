@@ -5,9 +5,10 @@ Maintainer: PKG OpenStack <openstack-devel@lists.alioth.debian.org>
 Uploaders: Thomas Goirand <zigo@debian.org>
 Build-Depends: debhelper (>= 9),
                dh-python,
-               openstack-pkg-tools (>= 23~),
-               python-all (>= 2.6.6-3~),
+               openstack-pkg-tools,
+               python-all,
                python-pbr,
+               python-setuptools,
                python-sphinx,
 Build-Depends-Indep: python-babel,
                      python-bashate,
@@ -34,7 +35,7 @@ Depends: python-babel,
          python-oslo.config (>= 1:1.9.3),
          ${misc:Depends},
          ${python:Depends},
-         ${sphinxdoc:Depends}
+         ${sphinxdoc:Depends},
 Description: tools used by the OpenStack Documentation project
  This package contains a set of tools used to build the OpenStack documentation
  (install-guide, etc.) in multiple formats: html, pdf, etc. The input format is
