@@ -1,6 +1,7 @@
-openstack-doc-tools (0.24-1) UNRELEASED; urgency=medium
+openstack-doc-tools (0.24-1) unstable; urgency=medium
 
   * New upstream release.
+  * Uploading to unstable.
   * Fixed (build-)depends for this release.
 
  -- Thomas Goirand <zigo@debian.org>  Thu, 01 Jan 2015 23:07:24 +0100
