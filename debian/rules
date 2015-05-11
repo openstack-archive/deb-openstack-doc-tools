@@ -6,6 +6,9 @@ include /usr/share/openstack-pkg-tools/pkgos.make
 
 export OSLO_PACKAGE_VERSION=$(VERSION)
 
+export LAST_CHANGE=$(shell dpkg-parsechangelog -S Date)
+export BUILD_DATE=$(shell LC_ALL=C date -u "+%B %d, %Y" -d "$(LAST_CHANGE)")
+
 %:
 	dh $@ --buildsystem=python_distutils --with python2,sphinxdoc
 
@@ -18,12 +21,12 @@ override_dh_clean:
 
 override_dh_sphinxdoc:
 ifeq (,$(findstring nodocs, $(DEB_BUILD_OPTIONS)))
-	sphinx-build -b html doc/source $(CURDIR)/debian/python-openstack-doc-tools/usr/share/doc/python-openstack-doc-tools/html
+	sphinx-build -D today="$(BUILD_DATE)" -b html doc/source $(CURDIR)/debian/python-openstack-doc-tools/usr/share/doc/python-openstack-doc-tools/html
 	dh_sphinxdoc -O--buildsystem=python_distutils
 endif
 
 override_dh_installman:
 ifeq (,$(findstring nodocs, $(DEB_BUILD_OPTIONS)))
-	sphinx-build -b man doc/source doc/build/man
+	sphinx-build -D today="$(BUILD_DATE)" -b man doc/source doc/build/man
 	dh_installman -O--buildsystem=python_distutils
 endif
