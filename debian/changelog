@@ -1,4 +1,4 @@
-openstack-doc-tools (0.24-2) UNRELEASED; urgency=medium
+openstack-doc-tools (0.24-2) unstable; urgency=medium
 
   * Makes build reproducible (Closes: #782387). Thanks to Reiner Herrmann
     <reiner@reiner-h.de> for the report and patch.
