@@ -27,11 +27,29 @@ def keystone_config():
 def glance_store_config():
     try:
         import glance_store
-        from oslo.config import cfg
+        from oslo_config import cfg
 
         glance_store.backend.register_opts(cfg.CONF)
     except ImportError:
         # glance_store is not available before Juno
+        pass
+
+
+def neutron_misc():
+    try:
+        # These imports are needed for kilo only
+        import bsnstacklib.plugins.bigswitch.config
+        import networking_cisco.plugins.cisco.cfg_agent.device_status  # noqa
+        import networking_l2gw.services.l2gateway.common.config as l2gw
+        import networking_vsphere.common.config
+        from oslo_config import cfg
+        import vmware_nsx.neutron.plugins.vmware.common.config  # noqa
+
+        bsnstacklib.plugins.bigswitch.config.register_config()
+        networking_vsphere.common.config.register_options()
+        l2gw.register_l2gw_opts_helper()
+        l2gw.register_ovsdb_opts_helper(cfg.CONF)
+    except Exception:
         pass
 
 
@@ -46,4 +64,5 @@ def nova_spice():
 
 HOOKS = {'keystone.common.config': keystone_config,
          'glance.common.config': glance_store_config,
+         'neutron': neutron_misc,
          'nova.spice': nova_spice}

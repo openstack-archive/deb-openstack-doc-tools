@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf8 -*-
 
 # Licensed under the Apache License, Version 2.0 (the "License"); you may
 # not use this file except in compliance with the License. You may obtain
@@ -37,16 +36,20 @@ import operator
 import os
 import re
 import shutil
+import six
 import subprocess
 import sys
 import time
-import urllib2
+
+if six.PY3:
+    from urllib import request as urllib2
+else:
+    import urllib2
 
 from lxml import etree
-from oslo.config import cfg
+from oslo_config import cfg
 
 import os_doc_tools
-from os_doc_tools.common import check_output   # noqa
 from os_doc_tools import jsoncheck
 from os_doc_tools.openstack.common import log
 
@@ -339,7 +342,9 @@ def www_touched():
 
     try:
         git_args = ["git", "diff", "--name-only", "HEAD~1", "HEAD"]
-        modified_files = check_output(git_args).strip().split()
+        modified_files = subprocess.check_output(
+            git_args,
+            universal_newlines=True).strip().split()
     except (subprocess.CalledProcessError, OSError) as e:
         print("git failed: %s" % e)
         sys.exit(1)
@@ -360,7 +365,9 @@ def only_po_touched():
 
     try:
         git_args = ["git", "diff", "--name-only", "HEAD~1", "HEAD"]
-        modified_files = check_output(git_args).strip().split()
+        modified_files = subprocess.check_output(
+            git_args,
+            universal_newlines=True).strip().split()
     except (subprocess.CalledProcessError, OSError) as e:
         print("git failed: %s" % e)
         sys.exit(1)
@@ -381,7 +388,9 @@ def only_rst_touched():
 
     try:
         git_args = ["git", "diff", "--name-only", "HEAD~1", "HEAD"]
-        modified_files = check_output(git_args).strip().split()
+        modified_files = subprocess.check_output(
+            git_args,
+            universal_newlines=True).strip().split()
     except (subprocess.CalledProcessError, OSError) as e:
         print("git failed: %s" % e)
         sys.exit(1)
@@ -408,7 +417,9 @@ def check_modified_affects_all(rootdir):
 
     try:
         git_args = ["git", "diff", "--name-only", "HEAD~1", "HEAD"]
-        modified_files = check_output(git_args).strip().split()
+        modified_files = subprocess.check_output(
+            git_args,
+            universal_newlines=True).strip().split()
     except (subprocess.CalledProcessError, OSError) as e:
         print("git failed: %s" % e)
         sys.exit(1)
@@ -442,7 +453,9 @@ def get_modified_files(rootdir, filtering=None):
                     "HEAD"]
         if filtering is not None:
             git_args.append(filtering)
-        modified_files = check_output(git_args).strip().split()
+        modified_files = subprocess.check_output(
+            git_args,
+            universal_newlines=True).strip().split()
     except (subprocess.CalledProcessError, OSError) as e:
         print("git failed: %s" % e)
         sys.exit(1)
@@ -473,7 +486,7 @@ def check_deleted_files(rootdir, file_exceptions, verbose):
     if verbose:
         print(" Removed files:")
         for f in deleted_files:
-            print ("   %s" % f)
+            print("   %s" % f)
 
     deleted_files = [os.path.abspath(x) for x in deleted_files]
     no_checked_files = 0
@@ -760,11 +773,11 @@ def get_gitroot():
 
     try:
         git_args = ["git", "rev-parse", "--show-toplevel"]
-        gitroot = check_output(git_args).rstrip()
+        gitroot = subprocess.check_output(git_args,
+                                          universal_newlines=True).rstrip()
     except (subprocess.CalledProcessError, OSError) as e:
         print("git failed: %s" % e)
         sys.exit(1)
-
     return gitroot
 
 
@@ -773,11 +786,14 @@ def print_gitinfo():
 
     try:
         git_cmd = ["git", "rev-parse", "--abbrev-ref", "HEAD"]
-        gitbranch = check_output(git_cmd).rstrip()
+        gitbranch = subprocess.check_output(git_cmd,
+                                            universal_newlines=True).rstrip()
         git_cmd = ["git", "show", "--format=%s", "-s"]
-        gitsubject = check_output(git_cmd).rstrip()
+        gitsubject = subprocess.check_output(git_cmd,
+                                             universal_newlines=True).rstrip()
         git_cmd = ["git", "show", "--format=%an", "-s"]
-        gitauthor = check_output(git_cmd).rstrip()
+        gitauthor = subprocess.check_output(git_cmd,
+                                            universal_newlines=True).rstrip()
     except (subprocess.CalledProcessError, OSError) as e:
         print("git failed: %s" % e)
         sys.exit(1)
@@ -893,14 +909,15 @@ def build_book(book, publish_path, log_path):
         out_file.write(output)
         if base_book == "install-guide":
             # Build Debian
-            base_book = "install-guide (for debian)"
-            output = subprocess.check_output(
-                ["mvn", "generate-sources", "-B",
-                 comments, release,
-                 "-Doperating.system=apt-debian", "-Dprofile.os=debian"],
-                stderr=subprocess.STDOUT
-            )
-            out_file.write(output)
+            if cfg.CONF.enable_debian_install:
+                base_book = "install-guide (for debian)"
+                output = subprocess.check_output(
+                    ["mvn", "generate-sources", "-B",
+                     comments, release,
+                     "-Doperating.system=apt-debian", "-Dprofile.os=debian"],
+                    stderr=subprocess.STDOUT
+                )
+                out_file.write(output)
             # Build Fedora
             base_book = "install-guide (for Fedora)"
             output = subprocess.check_output(
@@ -929,7 +946,10 @@ def build_book(book, publish_path, log_path):
                 stderr=subprocess.STDOUT
             )
             # Success
-            base_book = "install-guide (for Debian, Fedora, openSUSE, Ubuntu)"
+            base_book = "install-guide (for "
+            if cfg.CONF.enable_debian_install:
+                base_book += "Debian, "
+            base_book += "Fedora, openSUSE, Ubuntu)"
         # HOT template guide
         elif base_book == 'hot-guide':
             # Make sure that the build dir is clean
@@ -1038,7 +1058,7 @@ def print_unused(rootdir, ignore_dirs, included_by):
                 if (f_abs not in included_by and f_base != "pom.xml"
                    and not is_book_master(f_base)):
                     f_rel = os.path.relpath(f_abs, rootdir)
-                    print ("  %s " % f_rel)
+                    print("  %s " % f_rel)
         print("\n")
 
 
@@ -1237,9 +1257,11 @@ def generate_index_file():
         '<body>\n'
         '<h1>Results of checkbuild</h1>\n')
 
+    links = {}
     for root, dirs, files in os.walk(publish_path):
 
-        dirs[:] = [d for d in dirs if d not in ['common', 'webapp', 'content']]
+        dirs[:] = [d for d in dirs if d not in ['common', 'webapp', 'content',
+                                                'www']]
 
         # Ignore top-level index.html files
         if root == publish_path:
@@ -1247,29 +1269,29 @@ def generate_index_file():
 
         if os.path.isfile(os.path.join(root, 'content/index.html')):
             path = os.path.relpath(root, publish_path)
-            index_file.write('<a href="%s/content/index.html">%s</a>\n' %
-                             (path, path))
-            index_file.write('<br/>\n')
+            links[path] = ('<a href="%s/content/index.html">%s</a>\n' %
+                           (path, path))
         elif os.path.isfile(os.path.join(root, 'index.html')):
             path = os.path.relpath(root, publish_path)
-            index_file.write('<a href="%s/index.html">%s</a>\n' %
-                             (path, path))
-            index_file.write('<br/>\n')
+            links[path] = ('<a href="%s/index.html">%s</a>\n' %
+                           (path, path))
 
         if os.path.isfile(os.path.join(root, 'api-ref.html')):
             path = os.path.relpath(root, publish_path)
-            index_file.write('<a href="%s/api-ref.html">%s</a>\n' %
-                             (path, path))
-            index_file.write('<br/>\n')
+            links[path] = ('<a href="%s/api-ref.html">%s</a>\n' %
+                           (path, path))
 
         # List PDF files for api-site that have from "bk-api-ref*.pdf"
         # as well since they have no corresponding html file.
         for f in files:
             if f.startswith('bk-api-ref') and f.endswith('.pdf'):
                 path = os.path.relpath(root, publish_path)
-                index_file.write('<a href="%s/%s">%s</a>\n' %
-                                 (path, f, f))
-                index_file.write('<br/>\n')
+                links[f] = ('<a href="%s/%s">%s</a>\n' %
+                            (path, f, f))
+
+    for entry in sorted(links):
+        index_file.write(links[entry])
+        index_file.write('<br/>\n')
 
     if os.path.isfile(os.path.join(get_publish_path(), 'www-index.html')):
         index_file.write('<br/>\n')
@@ -1457,6 +1479,8 @@ cli_OPTS = [
     cfg.MultiStrOpt("url-exception",
                     help="URL that will be skipped during reachability "
                          "check."),
+    cfg.BoolOpt("enable-debian-install", default=False,
+                help="Enable building of Debian Install Guide."),
 ]
 
 OPTS = [
@@ -1498,7 +1522,7 @@ def handle_options():
          default_config_files=default_config_files)
 
     if CONF.repo_name:
-        print ("Testing repository '%s'\n" % CONF.repo_name)
+        print("Testing repository '%s'\n" % CONF.repo_name)
 
     if CONF.verbose:
         print("Verbose execution")
@@ -1564,13 +1588,33 @@ def handle_options():
             print(" Comments enabled: %s" % cfg.CONF.comments_enabled)
 
 
+def check_no_building():
+    """Figure out whether we need to build XML files."""
+
+    CONF = cfg.CONF
+    if not CONF.force and www_touched():
+        print("Only files in www directory changed, nothing to do.\n")
+        return True
+    # Build everything if we publish so that regularly all manuals are
+    # published, for testing ignore the locale directories.
+    if (not CONF.force and not CONF.publish and not CONF.language
+            and only_po_touched()):
+        print("Only files in locale directories changed, nothing to do.\n")
+        return True
+    # If only RST files are touched, there's nothing to do.
+    if (not CONF.force and only_rst_touched()):
+        print("Only RST files changed, nothing to do.\n")
+        return True
+    return False
+
+
 def doctest():
     """Central entrypoint, parses arguments and runs tests."""
 
     start_time = time.time()
     CONF = cfg.CONF
-    print ("\nOpenStack Doc Checks (using openstack-doc-tools version %s)\n"
-           % os_doc_tools.__version__)
+    print("\nOpenStack Doc Checks (using openstack-doc-tools version %s)\n"
+          % os_doc_tools.__version__)
     try:
         handle_options()
     except cfg.Error as e:
@@ -1587,20 +1631,8 @@ def doctest():
     elif not CONF.api_site:
         doc_path = os.path.join(doc_path, 'doc')
 
-    if not CONF.force and www_touched():
-        print("Only files in www directory changed, nothing to do.\n")
-        return
-
-    # Build everything if we publish so that regularly all manuals are
-    # published, for testing ignore the locale directories.
-    if (not CONF.force and not CONF.publish and not CONF.language
-            and only_po_touched()):
-        print("Only files in locale directories changed, nothing to do.\n")
-        return
-    # If only RST files are touched, there's nothing to do.
-    if (not CONF.force and only_rst_touched()):
-        print("Only RST files changed, nothing to do.\n")
-        if cfg.CONF.create_index:
+    if check_no_building():
+        if CONF.create_index:
             generate_index_file()
         return
 
@@ -1635,7 +1667,7 @@ def doctest():
                                        CONF.ignore_book)
 
     elapsed_time = (time.time() - start_time)
-    print ("Run time was: %.2f seconds." % elapsed_time)
+    print("Run time was: %.2f seconds." % elapsed_time)
     if errors == 0:
         print("Congratulations, all tests passed!")
         return 0

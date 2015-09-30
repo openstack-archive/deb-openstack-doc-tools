@@ -18,7 +18,7 @@
 #
 
 # Must import this before argparse
-from oslo.config import cfg
+from oslo_config import cfg
 
 import argparse
 import importlib
@@ -27,15 +27,20 @@ import pickle
 import re
 import sys
 
-import git
 from lxml import etree
-import oslo.i18n as i18n
 import stevedore
 
 from hooks import HOOKS  # noqa
 
 
-EXTENSIONS = ['oslo.messaging', 'oslo.db']
+EXTENSIONS = ['oslo.cache',
+              'oslo.concurrency',
+              'oslo.db',
+              'oslo.log',
+              'oslo.messaging',
+              'oslo.middleware',
+              'oslo.policy',
+              'oslo.service']
 
 IGNORE = [
     'trove.guestagent.datastore.postgresql.manager',
@@ -47,7 +52,8 @@ IGNORE = [
     'trove.guestagent.datastore.experimental.postgresql.service.root',
     'trove.guestagent.datastore.experimental.postgresql.service.users',
     'glance.contrib.plugins.image_artifact.setup',
-    'glance.contrib.plugins.artifacts_sample.setup'
+    'glance.contrib.plugins.artifacts_sample.setup',
+    'neutron.plugins.ml2.drivers.cisco.nexus.type_nexus_vxlan'
 ]
 
 
@@ -71,24 +77,26 @@ BASE_XML = '''<?xml version="1.0"?>
   </table>
 </para>'''
 
+BASE_RST = '''
+.. list-table:: Description of %(nice_cat)s configuration options
+   :header-rows: 2
+   :widths: 100 100
+   :class: config-ref-table
+
+   * - Configuration option = Default value
+     - Description
+'''
+
+NEW_GROUP_RST = '''
+.. list-table::
+   :header-rows: 1
+   :widths: 100 100
+   :class: config-ref-table
+
+'''
 
 register_re = re.compile(r'''^ +.*\.register_opts\((?P<opts>[^,)]+)'''
                          r'''(, (group=)?["'](?P<group>.*)["'])?\)''')
-
-
-def git_check(repo_path):
-    """Check a passed directory to verify it is a valid git repository."""
-
-    try:
-        repo = git.Repo(repo_path)
-        assert repo.bare is False
-        package_name = os.path.basename(repo.remotes.origin.url)
-        package_name = package_name.replace('.git', '')
-    except Exception:
-        print("\n%s doesn't seem to be a valid git repository." % repo_path)
-        print("Use the -i flag to specify the repository path.\n")
-        sys.exit(1)
-    return package_name
 
 
 def import_modules(repo_location, package_name, verbose=0):
@@ -97,29 +105,6 @@ def import_modules(repo_location, package_name, verbose=0):
     Loops through the repository, importing module by module to
     populate the configuration object (cfg.CONF) created from Oslo.
     """
-
-    # If the project uses oslo.i18n, make sure that it is initialized so that
-    # the builtins contain the _ function.
-    requirements = os.path.join(repo_location, 'requirements.txt')
-    with open(requirements) as fd:
-        with_i18n = False
-        for line in fd:
-            if line.startswith('oslo.i18n'):
-                i18n.enable_lazy()
-                i18n.install(package_name)
-                with_i18n = True
-                break
-        if not with_i18n:
-            # NOTE(gpocentek): projects didn't use oslo.i18n on havana, and
-            # some imports fail because _ is not yet registered in the
-            # builtins. We try to import and setup the translation tools
-            # manually.
-            try:
-                modname = "%s.openstack.common.gettextutils" % package_name
-                module = importlib.import_module(modname)
-                module.install(package_name)
-            except Exception:
-                pass
 
     pkg_location = os.path.join(repo_location, package_name)
     for root, dirs, files in os.walk(pkg_location):
@@ -316,21 +301,27 @@ class OptionsCache(object):
             for group, opts in ext.plugin():
                 for opt in opts:
                     if group is None:
-                        self._add_opt(opt.name, 'DEFAULT', opt)
+                        self._add_opt(opt.dest, 'DEFAULT', opt)
                     else:
-                        self._add_opt(group + '/' + opt.name, group, opt)
+                        self._add_opt(group + '/' + opt.dest, group, opt)
 
         self._opt_names.sort(OptionsCache._cmpopts)
 
-    def maybe_load_extensions(self, repo):
+    def maybe_load_extensions(self, repositories):
         # Use the requirements.txt of the project to guess if an oslo module
         # needs to be imported
-        for ext in EXTENSIONS:
-            requirements = os.path.join(repo, 'requirements.txt')
-            with open(requirements) as fd:
-                for line in fd:
-                    if line.startswith(ext):
-                        self.load_extension_options(ext)
+        needed_exts = set()
+        for repo in repositories:
+            base_path = os.path.dirname(repo)
+            for ext in EXTENSIONS:
+                requirements = os.path.join(base_path, 'requirements.txt')
+                with open(requirements) as fd:
+                    for line in fd:
+                        if line.startswith(ext):
+                            needed_exts.add(ext)
+
+        for ext in needed_exts:
+            self.load_extension_options(ext)
 
     def get_option_names(self):
         return self._opt_names
@@ -347,9 +338,10 @@ class OptionsCache(object):
             deprecated_opts = [{'group': deprecated.group,
                                 'name': deprecated.name}
                                for deprecated in option.deprecated_opts]
+            help_str = option.help.strip() if option.help else "None"
             new_option = {
                 'default': option.default,
-                'help': option.help.strip(),
+                'help': help_str,
                 'deprecated_opts': deprecated_opts,
                 'type': option.__class__.__name__.split('.')[-1]
             }
@@ -378,12 +370,7 @@ def pass_through(line):
             line.startswith('#'))
 
 
-def write_docbook(package_name, options, target, verbose=0):
-    """Write DocBook tables.
-
-    Prints a docbook-formatted table for every group of options.
-    """
-    target = target or '../../doc/common/tables/'
+def _get_options_by_cat(package_name):
     options_by_cat = {}
 
     with open(package_name + '.flagmappings') as f:
@@ -394,6 +381,10 @@ def write_docbook(package_name, options, target, verbose=0):
             for category in categories.split():
                 options_by_cat.setdefault(category, []).append(opt)
 
+    return options_by_cat
+
+
+def _get_category_names(package_name):
     package_headers = package_name + '.headers'
     category_names = {}
     for headers_file in ('shared.headers', package_headers):
@@ -406,6 +397,18 @@ def write_docbook(package_name, options, target, verbose=0):
                     category_names[cat] = nice_name.strip()
         except IOError:
             print("Cannot open %s (ignored)" % headers_file)
+
+    return category_names
+
+
+def write_docbook(package_name, options, target, verbose=0):
+    """Write DocBook tables.
+
+    Prints a docbook-formatted table for every group of options.
+    """
+    target = target or '../../doc/common/tables/'
+    options_by_cat = _get_options_by_cat(package_name)
+    category_names = _get_category_names(package_name)
 
     if not os.path.isdir(target):
         os.makedirs(target)
@@ -461,90 +464,51 @@ def write_docbook(package_name, options, target, verbose=0):
                                     encoding="UTF-8"))
 
 
-def write_docbook_rootwrap(package_name, repo, target, verbose=0):
-    """Write a DocBook table for rootwrap options.
+def write_rst(package_name, options, target, verbose=0):
+    """Write RST tables.
 
-    Prints a docbook-formatted table for options in a project's
-    rootwrap.conf configuration file.
+    Prints an RST-formatted table for every group of options.
     """
-    target = target or '../../doc/common/tables/'
-
-    # The sample rootwrap.conf path is not the same in all projects. It is
-    # either in etc/ or in etc/<project>/, so we check both locations.
-    conffile = os.path.join(repo, 'etc', package_name, 'rootwrap.conf')
-    if not os.path.exists(conffile):
-        conffile = os.path.join(repo, 'etc', 'rootwrap.conf')
-        if not os.path.exists(conffile):
-            return
-
-    # Python's configparser doesn't pass comments through. We need those
-    # to have some sort of description for the options. This simple parser
-    # doesn't handle everything configparser does, but it handles everything
-    # in the currentr rootwrap example conf files.
-    curcomment = ''
-    curgroup = 'DEFAULT'
-    options = []
-    for line in open(conffile):
-        line = line.strip()
-        if line.startswith('#'):
-            if curcomment != '':
-                curcomment += ' '
-            curcomment += line[1:].strip()
-        elif line.startswith('['):
-            if line.endswith(']'):
-                curgroup = line[1:-1]
-                curcomment = ''
-        elif '=' in line:
-            key, val = line.split('=')
-            options.append((curgroup, key.strip(), val.strip(), curcomment))
-            curcomment = ''
-
-    if len(options) == 0:
-        return
+    target = target or '../../doc/common/tables/rst/'
+    options_by_cat = _get_options_by_cat(package_name)
+    category_names = _get_category_names(package_name)
 
     if not os.path.isdir(target):
         os.makedirs(target)
 
-    parser = etree.XMLParser(remove_blank_text=True)
-    xml = etree.XML(BASE_XML % {'pkg': package_name,
-                                'cat': 'rootwrap',
-                                'nice_cat': 'rootwrap'},
-                    parser)
-    tbody = xml.find(".//{http://docbook.org/ns/docbook}tbody")
+    for cat in options_by_cat.keys():
+        if cat in category_names:
+            nice_cat = category_names[cat]
+        else:
+            nice_cat = cat
+            print("No nicename for %s" % cat)
+        rst_table = (BASE_RST % {'pkg': package_name,
+                                 'cat': cat,
+                                 'nice_cat': nice_cat})
+        curgroup = None
+        for optname in options_by_cat[cat]:
+            group, option = options.get_option(optname)
+            if group != curgroup:
+                if curgroup is not None:
+                    rst_table += NEW_GROUP_RST
+                rst_table += '   * - **[%s]**\n     -\n' % group
+                curgroup = group
 
-    curgroup = None
-    for group, optname, default, desc in options:
-        if group != curgroup:
-            curgroup = group
-            tr = etree.Element('tr')
-            th = etree.Element('th', colspan="2")
-            th.text = "[%s]" % group
-            tr.append(th)
-            tbody.append(tr)
-        if desc == '':
-            desc = "No help text available for this option."
+            if not option.help:
+                option.help = "No help text available for this option."
+            default = _sanitize_default(option)
 
-        tr = etree.Element('tr')
-        tbody.append(tr)
+            option_text = "%s = %s" % (option.dest, default)
+            option_text = "``%s``" % option_text.strip()
+            option_help = "(%s) %s" % (type(option).__name__,
+                                       option.help.strip())
+            rst_table += "   * - %s\n     - %s\n" % (option_text, option_help)
 
-        td = etree.Element('td')
-        option_xml = etree.SubElement(td, 'option')
-        option_xml.text = "%s" % optname
-        option_xml.tail = " = "
-        replaceable_xml = etree.SubElement(td, 'replaceable')
-        replaceable_xml.text = "%s" % default
-        tr.append(td)
-
-        td = etree.Element('td')
-        td.text = desc
-        tr.append(td)
-
-    file_path = ("%(target)s/%(package_name)s-rootwrap.xml" %
-                 {'target': target, 'package_name': package_name})
-    with open(file_path, 'w') as fd:
-        fd.write(etree.tostring(xml, pretty_print=True,
-                                xml_declaration=True,
-                                encoding="UTF-8"))
+        file_path = ("%(target)s/%(package_name)s-%(cat)s.rst" %
+                     {'target': target, 'package_name': package_name,
+                      'cat': cat})
+        with open(file_path, 'w') as fd:
+            fd.write(rst_table)
 
 
 def create_flagmappings(package_name, options, verbose=0):
@@ -608,7 +572,7 @@ def main():
         usage='%(prog)s <cmd> <package> [options]')
     parser.add_argument('subcommand',
                         help='Action (create, update, verify, dump).',
-                        choices=['create', 'update', 'docbook', 'dump'])
+                        choices=['create', 'update', 'docbook', 'rst', 'dump'])
     parser.add_argument('package',
                         help='Name of the top-level package.')
     parser.add_argument('-v', '--verbose',
@@ -617,10 +581,13 @@ def main():
                         dest='verbose',
                         required=False,)
     parser.add_argument('-i', '--input',
-                        dest='repo',
-                        help='Path to a valid git repository.',
+                        dest='repos',
+                        help='Path to a python package in which options '
+                             'should be discoverd. Can be used multiple '
+                             'times.',
                         required=False,
-                        type=str,)
+                        type=str,
+                        action='append')
     parser.add_argument('-o', '--output',
                         dest='target',
                         help='Directory or file in which data will be saved.\n'
@@ -631,37 +598,43 @@ def main():
                         type=str,)
     args = parser.parse_args()
 
-    if args.repo is None:
-        args.repo = './sources/%s' % args.package
+    if args.repos is None:
+        args.repos = ['./sources/%s/%s' % args.package]
 
-    package_name = git_check(args.repo)
+    for repository in args.repos:
+        package_name = os.path.basename(repository)
+        base_path = os.path.dirname(repository)
 
-    sys.path.insert(0, args.repo)
-    try:
-        __import__(package_name)
-    except ImportError as e:
-        if args.verbose >= 1:
-            print(str(e))
-            print("Failed to import: %s (%s)" % (package_name, e))
+        sys.path.insert(0, base_path)
+        try:
+            __import__(package_name)
+        except ImportError as e:
+            if args.verbose >= 1:
+                print(str(e))
+                print("Failed to import: %s (%s)" % (package_name, e))
 
-    import_modules(args.repo, package_name, verbose=args.verbose)
+        import_modules(base_path, package_name, verbose=args.verbose)
+        sys.path.pop(0)
+
     options = OptionsCache(verbose=args.verbose)
-    options.maybe_load_extensions(args.repo)
+    options.maybe_load_extensions(args.repos)
 
     if args.verbose > 0:
         print("%s options imported from package %s." % (len(options),
                                                         str(package_name)))
 
     if args.subcommand == 'create':
-        create_flagmappings(package_name, options, verbose=args.verbose)
+        create_flagmappings(args.package, options, verbose=args.verbose)
 
     elif args.subcommand == 'update':
-        update_flagmappings(package_name, options, verbose=args.verbose)
+        update_flagmappings(args.package, options, verbose=args.verbose)
 
     elif args.subcommand == 'docbook':
-        write_docbook(package_name, options, args.target, verbose=args.verbose)
-        write_docbook_rootwrap(package_name, args.repo, args.target,
-                               verbose=args.verbose)
+        write_docbook(args.package, options, args.target, verbose=args.verbose)
+
+    elif args.subcommand == 'rst':
+        write_rst(args.package, options, args.target, verbose=args.verbose)
+
     elif args.subcommand == 'dump':
         options.dump()
 

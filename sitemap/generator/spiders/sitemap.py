@@ -15,8 +15,8 @@ import time
 import urlparse
 
 from generator import items
-from scrapy.contrib.linkextractors import sgml
-from scrapy.contrib import spiders
+from scrapy.linkextractors import sgml
+from scrapy import spiders
 
 
 class SitemapSpider(spiders.CrawlSpider):
@@ -34,6 +34,7 @@ class SitemapSpider(spiders.CrawlSpider):
                 ],
                 deny=[
                     r'/trunk/',
+                    r'/draft/',
                     r'/api/'
                 ]
             ),

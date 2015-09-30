@@ -1,6 +1,76 @@
 Release notes
 =============
 
+0.30.1
+------
+
+* ``openstack-auto-commands``: Fix option parsing (bug#1488505)
+* ``doc-tools-check-languages``: Fix RST Debian Install Guide.
+
+0.30.0
+------
+
+* ``openstack-doc-test``: Always built index page in checkbuild.
+* ``openstack-auto-commands``: Add support for murano.
+* Remove ``dn2osdbk`` and the ``hotref`` sphinx extension.
+* ``autohelp.py``: Can now find options for a project in multiple python
+  packages.
+* ``doc-tools-check-languages``: Handle RST Install Guide and FirstApp.
+
+0.29.1
+------
+
+* ``doc-tools-check-languages``: Fix building of translated RST guides.
+
+0.29.0
+------
+
+* ``doc-tools-check-languages``: Handle common-rst directory, update
+  for User Guides and firstapp.
+* ``autohelp.py``: Suport generation of RST tables, fixes for
+  extensions.
+
+0.28
+----
+
+* ``openstack-doc-test``: Sort entries in index.html file.
+* ``diff_branches.py``: Add options containing DEPRECATED in their help
+  string to the deprecation list.
+* ``doc-tools-check-languages``: Fix bugs in RST handling that broke
+  handling of user-guide and user-guide-admin.
+
+0.27
+----
+
+* ``openstack-doc-test``: Do not build Debian Install Guide by
+  default, built it only if the parameter ``--enable-debian-install``
+  is passed. Fix index.html file and remove
+  www files that came in by accident.
+
+0.26
+----
+
+* Fix ``doc-tools-check-languages`` handling of RST guides and
+  publishing to translated draft guides.
+* Improve ``openstack-auto-commands``: bash-completion support for
+  python-glanceclient, new commands for python-swiftclient, new command
+  for trove-manage, automatically identify deprecated subcommands,
+  move client definitions into a YAML resource file, support of the
+  complete subcommand, support for new clients (barbican, designate, manila,
+  magnetodb, manila, mistral, tuskar).
+
+0.25
+----
+
+* Enhance ``doc-tools-check-languages`` to handle translation of RST
+  guides and publishing of draft guides to /draft/.
+* ``autohelp.py``: lookup configuration options in more oslo libraries.
+* ``autohelp.py``: add a hook for neutron plugins
+* ``autohelp-wrapper``: improve reliability by building a virtual env per
+  project, rather than a common virtual env.
+* ``autohelp-wrapper``: define the custom dependencies for each project in
+  their own requirements files.
+
 0.24
 ----
 

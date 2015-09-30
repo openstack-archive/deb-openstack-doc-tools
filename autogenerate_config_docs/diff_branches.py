@@ -26,18 +26,20 @@ import git
 from lxml import etree
 
 
-PROJECTS = ['ceilometer', 'cinder', 'glance', 'heat', 'keystone', 'neutron',
-            'nova', 'swift', 'trove']
-MASTER_RELEASE = 'Kilo'
+PROJECTS = ['ceilometer', 'cinder', 'glance', 'heat', 'ironic', 'keystone',
+            'neutron', 'nova', 'sahara', 'swift', 'trove']
+MASTER_RELEASE = 'Liberty'
 CODENAME_TITLE = {'ceilometer': 'Telemetry',
                   'cinder': 'OpenStack Block Storage',
-                  'glance': 'OpenStack Image Service',
+                  'glance': 'OpenStack Image service',
                   'heat': 'Orchestration',
+                  'ironic': 'Bare metal service',
                   'keystone': 'OpenStack Identity',
                   'neutron': 'OpenStack Networking',
                   'nova': 'OpenStack Compute',
+                  'sahara': 'Data Processing service',
                   'swift': 'OpenStack Object Storage',
-                  'trove': 'Database Service'}
+                  'trove': 'Database service'}
 
 
 def setup_venv(branch, novenvupdate):
@@ -54,25 +56,44 @@ def setup_venv(branch, novenvupdate):
         sys.exit(1)
 
 
+def _get_packages(project, branch):
+    release = branch if '/' not in branch else branch.split('/')[1]
+    packages = [project]
+    try:
+        with open('extra_repos/%s-%s' % (project, release)) as f:
+            packages.extend([p.strip() for p in f])
+    except IOError:
+        pass
+
+    return packages
+
+
 def get_options(project, branch, args):
     """Get the list of known options for a project."""
     print("Working on %(project)s (%(branch)s)" % {'project': project,
                                                    'branch': branch})
-    # Checkout the required branch
-    repo_path = os.path.join(args.sources, project)
-    repo = git.Repo(repo_path)
-    repo.heads[branch].checkout()
-
     # And run autohelp script to get a serialized dict of the discovered
     # options
-    dirname = os.path.abspath(os.path.join('venv', branch.replace('/', '_')))
+    dirname = os.path.abspath(os.path.join('venv',
+                                           branch.replace('/', '_'),
+                                           project))
+
     if project == 'swift':
         cmd = ("python extract_swift_flags.py dump "
                "-s %(sources)s/swift -m %(sources)s/openstack-manuals" %
                {'sources': args.sources})
+        repo_path = args.sources
     else:
-        cmd = ("python autohelp.py dump %(project)s -i %(path)s" %
-               {'project': project, 'path': repo_path})
+        packages = _get_packages(project, branch)
+        autohelp_args = ""
+        for package in packages:
+            repo_path = os.path.join(args.sources, project)
+            repo = git.Repo(repo_path)
+            repo.heads[branch].checkout()
+            autohelp_args += (" -i %s/%s" %
+                              (repo_path, package.replace('-', '_')))
+        cmd = ("python autohelp.py dump %(project)s %(args)s" %
+               {'project': project, 'args': autohelp_args})
     path = os.environ.get("PATH")
     bin_path = os.path.abspath(os.path.join(dirname, "bin"))
     path = "%s:%s" % (bin_path, path)
@@ -167,6 +188,12 @@ def diff(old_list, new_list):
         # Find options that have been deprecated in the new release.
         # If an option name is a key in the old_list dict, it means that it
         # wasn't deprecated.
+
+        # Some options are deprecated, but not replaced with a new option.
+        # These options usually contain 'DEPRECATED' in their help string.
+        if 'DEPRECATED' in option['help']:
+            deprecated_opts.append((name, None))
+
         for deprecated in option['deprecated_opts']:
             # deprecated_opts is a list which always holds at least 1 invalid
             # dict. Forget it.
@@ -186,6 +213,9 @@ def diff(old_list, new_list):
 
 def format_option_name(name):
     """Return a formatted string for the option path."""
+    if name is None:
+        return "None"
+
     try:
         section, name = name.split('/')
     except ValueError:
@@ -271,6 +301,15 @@ def generate_docbook(project, new_branch, old_list, new_list):
             deprecated = format_option_name(deprecated)
             new = format_option_name(new)
             dbk_append_row(table, [deprecated, new])
+
+    # No new, updated and deprecated options
+    if not new_opts and not changed_default and not deprecated_opts:
+        para = etree.Element("para")
+        para.text = ("There are no new, updated and deprecated options "
+                     "in %(release)s for %(project)s." %
+                     {'release': release,
+                      'project': CODENAME_TITLE[project]})
+        section.append(para)
 
     return etree.tostring(section, pretty_print=True, xml_declaration=True,
                           encoding="UTF-8")
