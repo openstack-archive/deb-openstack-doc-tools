@@ -1,0 +1,23 @@
+#!/bin/sh
+
+set -e
+
+if [ "$1" = "remove" ] ; then
+	update-alternatives --remove doc-tools-check-languages /usr/bin/python2-doc-tools-check-languages
+	update-alternatives --remove doc-tools-update-cli-reference /usr/bin/python2-doc-tools-update-cli-reference
+	update-alternatives --remove openstack-auto-commands /usr/bin/python2-openstack-auto-commands
+	update-alternatives --remove openstack-autohelp /usr/bin/python2-openstack-autohelp
+	update-alternatives --remove openstack-doc-test /usr/bin/python2-openstack-doc-test
+	update-alternatives --remove openstack-generate-docbook /usr/bin/python2-openstack-generate-docbook
+	update-alternatives --remove openstack-generate-pot /usr/bin/python2-openstack-generate-pot
+	update-alternatives --remove openstack-jsoncheck /usr/bin/python2-openstack-jsoncheck
+	update-alternatives --remove doc-tools-build-rst /usr/bin/python2-doc-tools-build-rst
+
+	update-alternatives --remove openstack-doc-tools-prettify.py			/usr/share/openstack-doc-tools/cleanup/python2-prettify.py
+	update-alternatives --remove openstack-doc-tools-remove_unnecessary_spaces.py	/usr/share/openstack-doc-tools/cleanup/python2-remove_unnecessary_spaces.py
+	update-alternatives --remove openstack-doc-tools-retf.py			/usr/share/openstack-doc-tools/cleanup/retf/python2-retf.py   
+fi
+
+#DEBHELPER#
+
+exit 0

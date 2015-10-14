@@ -11,13 +11,16 @@ Build-Depends: debhelper (>= 9),
                python-pbr (>= 1.8),
                python-setuptools,
                python-sphinx,
-Build-Depends-Indep: python-doc8,
-                     libxml2-dev,
+               python3-all,
+               python3-pbr (>= 1.8),
+               python3-setuptools,
+Build-Depends-Indep: libxml2-dev,
                      libxslt-dev,
                      pylint,
                      python-babel,
                      python-bashate,
                      python-demjson,
+                     python-doc8,
                      python-hacking (>= 0.10.0),
                      python-iso8601,
                      python-lxml,
@@ -32,6 +35,7 @@ Package: python-openstack-doc-tools
 Architecture: all
 Depends: libxml2-dev,
          libxslt-dev,
+         openstack-doc-tools-common (= ${binary:Version}),
          python-babel,
          python-demjson,
          python-iso8601,
@@ -43,7 +47,44 @@ Depends: libxml2-dev,
          ${misc:Depends},
          ${python:Depends},
          ${sphinxdoc:Depends},
-Description: tools used by the OpenStack Documentation project
+Description: tools used by the OpenStack Documentation project - Python 2.7
  This package contains a set of tools used to build the OpenStack documentation
  (install-guide, etc.) in multiple formats: html, pdf, etc. The input format is
  a set of XML documents.
+ .
+ This package provides the Python 2.7 module.
+
+Package: python3-openstack-doc-tools
+Architecture: all
+Depends: libxml2-dev,
+         libxslt-dev,
+         openstack-doc-tools-common (= ${binary:Version}),
+         python3-babel,
+         python3-demjson,
+         python3-iso8601,
+         python3-lxml,
+         python3-oslo.config (>= 1:2.3.0),
+         python3-pbr (>= 1.8),
+         python3-sphinx,
+         python3-yaml,
+         ${misc:Depends},
+         ${python3:Depends},
+         ${sphinxdoc:Depends},
+Description: tools used by the OpenStack Documentation project - Python 3.x
+ This package contains a set of tools used to build the OpenStack documentation
+ (install-guide, etc.) in multiple formats: html, pdf, etc. The input format is
+ a set of XML documents.
+ .
+ This package provides the Python 3.x module.
+
+Package: openstack-doc-tools-common
+Architecture: all
+Depends: ${misc:Depends},
+         ${python:Depends},
+         ${sphinxdoc:Depends},
+Description: tools used by the OpenStack Documentation project - common files
+ This package contains a set of tools used to build the OpenStack documentation
+ (install-guide, etc.) in multiple formats: html, pdf, etc. The input format is
+ a set of XML documents.
+ .
+ This package contains common files for both the Python 2.7 and 3.x packages.

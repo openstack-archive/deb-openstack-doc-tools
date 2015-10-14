@@ -1,5 +1,7 @@
 #!/usr/bin/make -f
 
+PYTHONS:=$(shell pyversions -vr)
+PYTHON3S:=$(shell py3versions -vr)
 
 UPSTREAM_GIT = git://github.com/openstack/openstack-doc-tools.git
 include /usr/share/openstack-pkg-tools/pkgos.make
@@ -10,14 +12,73 @@ export LAST_CHANGE=$(shell dpkg-parsechangelog -S Date)
 export BUILD_DATE=$(shell LC_ALL=C date -u "+%B %d, %Y" -d "$(LAST_CHANGE)")
 
 %:
-	dh $@ --buildsystem=python_distutils --with python2,sphinxdoc
+	dh $@ --buildsystem=python_distutils --with python2,python3,sphinxdoc
 
 override_dh_clean:
 	dh_clean -O--buildsystem=python_distutils
 	rm -rf doc/build
 
-#override_dh_auto_install:
-#	dh_auto_install -O--buildsystem=python_distutils
+override_dh_auto_install:
+	set -e ; for pyvers in $(PYTHONS); do \
+		python$$pyvers setup.py install --install-layout=deb \
+			--root $(CURDIR)/debian/python-openstack-doc-tools; \
+	done
+	set -e ; for pyvers in $(PYTHON3S); do \
+		python$$pyvers setup.py install --install-layout=deb \
+			--root $(CURDIR)/debian/python3-openstack-doc-tools; \
+	done
+	rm -f $(CURDIR)/debian/python*/usr/lib/python*/dist-packages/*.pth
+	mv $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/doc-tools-check-languages $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/python2-doc-tools-check-languages
+	mv $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/doc-tools-check-languages $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/python3-doc-tools-check-languages
+	mv $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/doc-tools-update-cli-reference $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/python2-doc-tools-update-cli-reference
+	mv $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/doc-tools-update-cli-reference $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/python3-doc-tools-update-cli-reference
+	mv $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/openstack-auto-commands $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/python2-openstack-auto-commands
+	mv $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/openstack-auto-commands $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/python3-openstack-auto-commands
+	mv $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/openstack-autohelp $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/python2-openstack-autohelp
+	mv $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/openstack-autohelp $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/python3-openstack-autohelp
+	mv $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/openstack-doc-test $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/python2-openstack-doc-test
+	mv $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/openstack-doc-test $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/python3-openstack-doc-test
+	mv $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/openstack-generate-docbook $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/python2-openstack-generate-docbook
+	mv $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/openstack-generate-docbook $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/python3-openstack-generate-docbook
+	mv $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/openstack-generate-pot $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/python2-openstack-generate-pot
+	mv $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/openstack-generate-pot $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/python3-openstack-generate-pot
+	mv $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/openstack-jsoncheck $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/python2-openstack-jsoncheck
+	mv $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/openstack-jsoncheck $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/python3-openstack-jsoncheck
+	mv $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/doc-tools-build-rst $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/python2-doc-tools-build-rst
+	mv $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/doc-tools-build-rst $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/python3-doc-tools-build-rst
+
+	# Move the cleanup and sitemap to the openstack-doc-tools-common package
+	mkdir -p $(CURDIR)/debian/openstack-doc-tools-common/usr/share/openstack-doc-tools
+	mv $(CURDIR)/debian/python-openstack-doc-tools/usr/share/openstack-doc-tools/sitemap $(CURDIR)/debian/openstack-doc-tools-common/usr/share/openstack-doc-tools
+	mv $(CURDIR)/debian/python-openstack-doc-tools/usr/share/openstack-doc-tools/cleanup $(CURDIR)/debian/openstack-doc-tools-common/usr/share/openstack-doc-tools
+	rm -rf $(CURDIR)/debian/python*-openstack-doc-tools/usr/share/openstack-doc-tools/*
+
+	# Move back the .py files to individual python 2.7 / 3.x packages
+	mkdir -p $(CURDIR)/debian/python3-openstack-doc-tools/usr/share/openstack-doc-tools/cleanup/retf
+	mkdir -p $(CURDIR)/debian/python-openstack-doc-tools/usr/share/openstack-doc-tools/cleanup/retf
+	set -e ; set -x ; for i in $(CURDIR)/debian/openstack-doc-tools-common/usr/share/openstack-doc-tools/cleanup/*.py ; do \
+		BASEFILE=`basename $$i` ; \
+		DIRNAME=`dirname $$i` ; \
+		cp $$i $(CURDIR)/debian/python-openstack-doc-tools/usr/share/openstack-doc-tools/cleanup/python2-$$BASEFILE ; \
+		cp $$i $(CURDIR)/debian/python3-openstack-doc-tools/usr/share/openstack-doc-tools/cleanup/python3-$$BASEFILE ; \
+		rm $$i ; \
+	done
+	set -e ; set -x ; for i in $(CURDIR)/debian/openstack-doc-tools-common/usr/share/openstack-doc-tools/cleanup/retf/*.py ; do \
+		BASEFILE=`basename $$i` ; \
+		DIRNAME=`dirname $$i` ; \
+		cp $$i $(CURDIR)/debian/python-openstack-doc-tools/usr/share/openstack-doc-tools/cleanup/retf/python2-$$BASEFILE ; \
+		cp $$i $(CURDIR)/debian/python3-openstack-doc-tools/usr/share/openstack-doc-tools/cleanup/retf/python3-$$BASEFILE ; \
+		rm $$i ; \
+	done
+	find $(CURDIR)/debian/python3-openstack-doc-tools/usr/share/openstack-doc-tools -exec sed -i '1 s/python/python3/' {} \;
+
+override_dh_python2:
+	dh_python2 -ppython-openstack-doc-tools
+	dh_python2 -ppython-openstack-doc-tools /usr/share
+
+override_dh_python3:
+	dh_python3 -ppython3-openstack-doc-tools
+	dh_python3 -ppython3-openstack-doc-tools /usr/share
 
 override_dh_sphinxdoc:
 ifeq (,$(findstring nodocs, $(DEB_BUILD_OPTIONS)))
