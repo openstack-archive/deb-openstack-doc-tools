@@ -1,6 +1,14 @@
 Release notes
 =============
 
+0.31.0
+------
+
+* Add ``doc-tools-build-rst`` to build RST guides.
+* Update sitemap to silence warnings.
+* Enhance ``openstack-auto-commands`` for new commands and releases.
+* Update ``autohelp.py`` for Liberty release.
+
 0.30.1
 ------
 

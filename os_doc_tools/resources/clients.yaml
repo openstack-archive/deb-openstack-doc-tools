@@ -13,6 +13,8 @@ designate:
 glance:
     name: OpenStack Image service
     title: Image service
+gnocchi:
+    name: A time series storage and resources index service
 heat:
     name: Orchestration
 ironic:
@@ -23,8 +25,6 @@ keystone:
 neutron:
     name: OpenStack Networking
     title: Networking
-magnetodb:
-    name: Key-Value Store as a Service
 magnum:
     name: Containers service
 manila:
@@ -78,6 +78,8 @@ trove-manage:
     title: Database service management
     subcommands:
       - datastore_update
+      - datastore_version_flavor_add
+      - datastore_version_flavor_delete
       - datastore_version_update
       - db_downgrade
       - db_load_datastore_config_parameters
