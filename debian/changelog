@@ -1,11 +1,16 @@
-openstack-doc-tools (0.30.1-1) UNRELEASED; urgency=medium
+openstack-doc-tools (0.31.0-1) experimental; urgency=medium
 
+  [ Corey Bryant ]
   * New upstream release.
   * d/control: Align dependencies with upstream.
   * d/gbp.conf: Update debian-branch to debian/liberty.
   * d/control: Update uploaders.
 
- -- Corey Bryant <corey.bryant@canonical.com>  Wed, 30 Sep 2015 16:12:33 -0400
+  [ Thomas Goirand ]
+  * New upstream release.
+  * d/control: Align dependencies with upstream.
+
+ -- Thomas Goirand <zigo@debian.org>  Wed, 14 Oct 2015 10:25:41 +0200
 
 openstack-doc-tools (0.24-2) unstable; urgency=medium
 
