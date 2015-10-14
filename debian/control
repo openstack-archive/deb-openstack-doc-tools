@@ -22,7 +22,6 @@ Build-Depends-Indep: python-doc8,
                      python-iso8601,
                      python-lxml,
                      python-oslo.config (>= 1:2.3.0),
-                     python-sphinx,
                      python-yaml,
 Standards-Version: 3.9.6
 Homepage: https://github.com/openstack/openstack-doc-tools
