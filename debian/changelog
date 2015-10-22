@@ -1,3 +1,11 @@
+openstack-doc-tools (0.31.0-3) unstable; urgency=medium
+
+  * Uploading to unstable.
+  * Added Breaks+Replaces for supporting upgrades from 0.31.0-1. Thanks to
+    Andreas Beckmann for the report (Closes: #802645).
+
+ -- Thomas Goirand <zigo@debian.org>  Thu, 22 Oct 2015 20:29:19 +0000
+
 openstack-doc-tools (0.31.0-2) experimental; urgency=medium
 
   * Added Python3 support.

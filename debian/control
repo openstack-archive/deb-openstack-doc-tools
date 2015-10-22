@@ -82,6 +82,8 @@ Architecture: all
 Depends: ${misc:Depends},
          ${python:Depends},
          ${sphinxdoc:Depends},
+Breaks: python-openstack-doc-tools (<< 0.31.0-2~)
+Replaces: python-openstack-doc-tools (<< 0.31.0-2~)
 Description: tools used by the OpenStack Documentation project - common files
  This package contains a set of tools used to build the OpenStack documentation
  (install-guide, etc.) in multiple formats: html, pdf, etc. The input format is
