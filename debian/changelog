@@ -1,3 +1,9 @@
+openstack-doc-tools (0.31.0-4) unstable; urgency=medium
+
+  * override_dh_python3 to fix Py3 shebang.
+
+ -- Thomas Goirand <zigo@debian.org>  Fri, 23 Oct 2015 22:22:00 +0000
+
 openstack-doc-tools (0.31.0-3) unstable; urgency=medium
 
   * Uploading to unstable.
