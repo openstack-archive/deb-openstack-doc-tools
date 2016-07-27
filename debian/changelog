@@ -1,3 +1,9 @@
+openstack-doc-tools (0.34.0-1) experimental; urgency=medium
+
+  * New upstream release.
+
+ -- Thomas Goirand <zigo@debian.org>  Wed, 27 Jul 2016 08:53:42 +0000
+
 openstack-doc-tools (0.31.0-4) unstable; urgency=medium
 
   * override_dh_python3 to fix Py3 shebang.
