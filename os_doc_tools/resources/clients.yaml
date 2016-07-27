@@ -1,30 +1,33 @@
 ---
 barbican:
-    name: Key management service
+    name: Key Manager service
     subcommands: complete
 ceilometer:
-    name: Telemetry
+    name: Telemetry service
 cinder:
-    name: OpenStack Block Storage
-    title: Block Storage
+    name: Block Storage service
+cloudkitty:
+    name: Rating service
+congress:
+    name: Governance service
+cue:
+    name: Message Broker service
 designate:
     name: DNS service
     subcommands: complete
 glance:
-    name: OpenStack Image service
-    title: Image service
+    name: Image service
 gnocchi:
     name: A time series storage and resources index service
+    subcommands: complete
 heat:
-    name: Orchestration
+    name: Orchestration service
 ironic:
-    name: Bare metal
+    name: Bare Metal service
 keystone:
-    name: OpenStack Identity
-    title: Identity service
-neutron:
-    name: OpenStack Networking
-    title: Networking
+    name: Identity service
+kite:
+    name: A service for managing and distributing message encryption keys
 magnum:
     name: Containers service
 manila:
@@ -32,18 +35,23 @@ manila:
 mistral:
     name: Workflow service
     subcommands: complete
+monasca:
+    name: Monitoring
+murano:
+    name: Application Catalog service
+neutron:
+    name: Networking service
 nova:
     name: OpenStack Compute
     title: Compute
-manila:
-    name: Shared file systems
-murano:
-    name: Application catalog
 sahara:
-    name: Data processing
+    name: Data Processing service
+senlin:
+    name: Clustering service
+solum:
+    name: Software Development Lifecycle Automation service
 swift:
-    name: OpenStack Object Storage
-    title: Object Storage
+    name: Object Storage service
     subcommands:
       - capabilities
       - delete
@@ -53,29 +61,12 @@ swift:
       - stat
       - tempurl
       - upload
-tuskar:
-    name: Deployment
-    subcommands:
-      - plan-add-role
-      - plan-create
-      - plan-delete
-      - plan-flavor
-      - plan-list
-      - plan-patch
-      - plan-remove-role
-      - plan-scale
-      - plan-show
-      - plan-show-flavors
-      - plan-show-scale
-      - plan-templates
-      - plan-update
-      - role-list
+tripleo:
+    name: Deployment service
 trove:
-    name: Database
-    title: Database service
+    name: Database service
 trove-manage:
-    name: Database Management Utility
-    title: Database service management
+    name: Database service management utility
     subcommands:
       - datastore_update
       - datastore_version_flavor_add
@@ -86,6 +77,8 @@ trove-manage:
       - db_recreate
       - db_sync
       - db_upgrade
+zaqar:
+    name: Message service
 openstack:
-    title: OpenStack
+    name: OpenStack
     subcommands: complete

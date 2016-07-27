@@ -21,20 +21,19 @@ fi
 
 project=$1
 
-if [[ ! -e /usr/bin/virtualenv ]]; then
-    echo "error: virtualenv not installed"
-    exit 1
-fi
+# checks command exist or not
+function does_exist {
+    which $@ > /dev/null 2>&1
+    local status=$?
+    if [[ $status -ne 0 ]]; then
+        echo "error: $1 not installed"
+        exit 1
+    fi
+}
 
-if [[ ! -e /usr/bin/pip ]]; then
-    echo "error: pip not installed"
-    exit 1
-fi
-
-if [[ ! -e /usr/bin/git ]]; then
-    echo "error: git not installed"
-    exit 1
-fi
+does_exist virtualenv
+does_exist pip
+does_exist git
 
 if [[ ! -e $HOME/.gitconfig ]]; then
     echo "note: ~/.gitconfig does not exist"
@@ -48,7 +47,29 @@ source .venv/bin/activate
 
 pip install --upgrade openstack-doc-tools
 pip install --upgrade pbr
-pip install --upgrade python-${project}client
+
+# Cliff can optionally output HTML - if cliff-tablib is installed.
+pip install --upgrade cliff-tablib
+
+if [[ $project == 'gnocchi' ]]; then
+    pip install --upgrade ${project}client
+else
+    pip install --upgrade python-${project}client
+fi
+# python-openstackclient has plugin interface.
+# It needs to install plugin packages
+# (i.e. python-ironicclient).
+osc_plugins=(barbican congress cue designate heat ironic ironic-inspector- sahara zaqar)
+if [[ $project == 'openstack' ]]; then
+    # sahara misses oslo.log dependency.
+    # This is fixed in git repository and can be removed again after
+    # next python-saharaclient release.
+    pip install --upgrade oslo.log
+    for p in "${osc_plugins[@]}"
+    do
+        pip install --upgrade python-${p}client
+    done
+fi
 
 rm -rf output
 mkdir output
@@ -65,9 +86,9 @@ cd openstack-manuals
 
 git checkout master
 git pull
-branch=update_client_$project
+branch=cli-reference
 git branch --list $branch && git branch -D $branch
 git checkout -b $branch
-mv ../output/ch_cli_${project}_commands.xml doc/cli-reference/generated
+mv ../output/${project}.rst "doc/cli-reference/source"
 version=$($project --version 2>&1)
-git commit -a -m "Update CLI reference for python-${project}client ${version##* }"
+git commit -a -m "[cli-ref] Update python-${project}client to ${version##* }"

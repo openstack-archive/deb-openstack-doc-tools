@@ -21,9 +21,15 @@ packages. For Ubuntu install the required packages with the following command:
 
 .. code-block:: console
 
-    $ sudo apt-get install python-dev libxml2-dev libxslt1-dev libz-dev \
+    $ sudo apt-get install python-dev libxml2-dev libxslt1-dev zlib1g-dev \
                            libmysqlclient-dev libpq-dev libffi-dev \
-                           libsqlite3-dev libldap2-dev libsasl2-dev
+                           libsqlite3-dev libldap2-dev libsasl2-dev \
+                           libjpeg-dev liberasurecode-dev
+
+
+.. note:
+    * libjpeg is needed for ironic
+    * liberasurecode-dev is needed for swift
 
 The workflow is:
 
@@ -32,7 +38,7 @@ The workflow is:
     $ pip install -rrequirements.txt
     $ ./autohelp-wrapper update
     $ $EDITOR sources/openstack-manuals/tools/autogenerate-config-flagmappings/*.flagmappings
-    $ ./autohelp-wrapper docbook
+    $ ./autohelp-wrapper rst
     $ # check the results in sources/openstack-manuals
 
 This will generate the tables for all the known projects.
@@ -48,17 +54,7 @@ names as arguments:
 
     $ ./autohelp-wrapper update cinder heat
     $ # edit the mappings files
-    $ ./autohelp-wrapper docbook cinder heat
-
-
-Creating mappings for a new project
------------------------------------
-
-Run the wrapper with the create subcommand:
-
-.. code-block:: console
-
-    $ ./autohelp-wrapper create zaqar
+    $ ./autohelp-wrapper rst cinder heat
 
 
 Flagmappings files
@@ -90,7 +86,7 @@ to work on another branch:
 
 .. code-block:: console
 
-    $ ./autohelp-wrapper update -b stable/icehouse
+    $ ./autohelp-wrapper -b stable/liberty update
 
 .. note::
    The ``-b`` switch doesn't apply to the ``openstack-manuals`` repository

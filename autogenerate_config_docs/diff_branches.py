@@ -22,27 +22,29 @@ import pickle
 import subprocess
 import sys
 
-import git
-from lxml import etree
+import jinja2
 
 
-PROJECTS = ['ceilometer', 'cinder', 'glance', 'heat', 'ironic', 'keystone',
-            'neutron', 'nova', 'sahara', 'swift', 'trove']
-MASTER_RELEASE = 'Liberty'
-CODENAME_TITLE = {'ceilometer': 'Telemetry',
-                  'cinder': 'OpenStack Block Storage',
-                  'glance': 'OpenStack Image service',
+PROJECTS = ['aodh', 'ceilometer', 'cinder', 'glance', 'heat', 'ironic',
+            'keystone', 'manila', 'neutron', 'nova', 'sahara', 'swift',
+            'trove']
+MASTER_RELEASE = 'Mitaka'
+CODENAME_TITLE = {'aodh': 'Alarming',
+                  'ceilometer': 'Telemetry',
+                  'cinder': 'Block Storage',
+                  'glance': 'Image service',
                   'heat': 'Orchestration',
-                  'ironic': 'Bare metal service',
-                  'keystone': 'OpenStack Identity',
-                  'neutron': 'OpenStack Networking',
-                  'nova': 'OpenStack Compute',
+                  'ironic': 'Bare Metal service',
+                  'keystone': 'Identity service',
+                  'manila': 'Shared File Systems service',
+                  'neutron': 'Networking',
+                  'nova': 'Compute',
                   'sahara': 'Data Processing service',
-                  'swift': 'OpenStack Object Storage',
+                  'swift': 'Object Storage service',
                   'trove': 'Database service'}
 
 
-def setup_venv(branch, novenvupdate):
+def setup_venv(projects, branch, novenvupdate):
     """Setup a virtual environment for `branch`."""
     dirname = os.path.join('venv', branch.replace('/', '_'))
     if novenvupdate and os.path.exists(dirname):
@@ -50,7 +52,7 @@ def setup_venv(branch, novenvupdate):
     if not os.path.exists('venv'):
         os.mkdir('venv')
     args = ["./autohelp-wrapper", "-b", branch, "-e", dirname, "setup"]
-    args.extend(PROJECTS)
+    args.extend(projects)
     if subprocess.call(args) != 0:
         print("Impossible to create the %s environment." % branch)
         sys.exit(1)
@@ -60,7 +62,7 @@ def _get_packages(project, branch):
     release = branch if '/' not in branch else branch.split('/')[1]
     packages = [project]
     try:
-        with open('extra_repos/%s-%s' % (project, release)) as f:
+        with open('extra_repos/%s-%s.txt' % (project, release)) as f:
             packages.extend([p.strip() for p in f])
     except IOError:
         pass
@@ -68,41 +70,23 @@ def _get_packages(project, branch):
     return packages
 
 
-def get_options(project, branch, args):
+def get_options(project, branch):
     """Get the list of known options for a project."""
     print("Working on %(project)s (%(branch)s)" % {'project': project,
                                                    'branch': branch})
     # And run autohelp script to get a serialized dict of the discovered
     # options
-    dirname = os.path.abspath(os.path.join('venv',
-                                           branch.replace('/', '_'),
-                                           project))
+    dirname = os.path.join('venv', branch.replace('/', '_'))
+    args = ["./autohelp-wrapper", "-q", "-b", branch, "-e", dirname,
+            "dump", project]
 
-    if project == 'swift':
-        cmd = ("python extract_swift_flags.py dump "
-               "-s %(sources)s/swift -m %(sources)s/openstack-manuals" %
-               {'sources': args.sources})
-        repo_path = args.sources
-    else:
-        packages = _get_packages(project, branch)
-        autohelp_args = ""
-        for package in packages:
-            repo_path = os.path.join(args.sources, project)
-            repo = git.Repo(repo_path)
-            repo.heads[branch].checkout()
-            autohelp_args += (" -i %s/%s" %
-                              (repo_path, package.replace('-', '_')))
-        cmd = ("python autohelp.py dump %(project)s %(args)s" %
-               {'project': project, 'args': autohelp_args})
     path = os.environ.get("PATH")
     bin_path = os.path.abspath(os.path.join(dirname, "bin"))
     path = "%s:%s" % (bin_path, path)
-    serialized = subprocess.check_output(cmd, shell=True,
+    serialized = subprocess.check_output(args,
                                          env={'VIRTUAL_ENV': dirname,
                                               'PATH': path})
-    sys.path.insert(0, repo_path)
     ret = pickle.loads(serialized)
-    sys.path.pop(0)
     return ret
 
 
@@ -127,54 +111,10 @@ def _cmpopts(x, y):
         return cmp(x, y)
 
 
-def dbk_append_table(parent, title, cols):
-    """Create a docbook table and append it to `parent`.
-
-    :param parent: the element to which the table is added
-    :param title: the table title
-    :param cols: the number of columns in this table
-    """
-    table = etree.Element("table")
-    parent.append(table)
-    caption = etree.Element("caption")
-    caption.text = title
-    table.append(caption)
-    for i in range(cols):
-        # We cast to int for python 3
-        width = "%d%%" % int(100 / cols)
-        table.append(etree.Element("col", width=width))
-    return table
-
-
-def dbk_append_row(parent, cells):
-    """Append a row to a table.
-
-    :param parent: the table
-    :param cells: a list of strings, one string per column
-    """
-    tr = etree.Element("tr")
-    for text in cells:
-        td = etree.Element("td")
-        td.text = str(text)
-        tr.append(td)
-    parent.append(tr)
-
-
-def dbk_append_header(parent, cells):
-    """Append a header to a table.
-
-    :param parent: the table
-    :param cells: a list of strings, one string per column
-    """
-    thead = etree.Element("thead")
-    dbk_append_row(thead, cells)
-    parent.append(thead)
-
-
 def diff(old_list, new_list):
     """Compare the old and new lists of options."""
     new_opts = []
-    changed_default = []
+    new_defaults = []
     deprecated_opts = []
     for name, (group, option) in new_list.items():
         # Find the new options
@@ -183,7 +123,7 @@ def diff(old_list, new_list):
 
         # Find the options for which the default value has changed
         elif option['default'] != old_list[name][1]['default']:
-            changed_default.append(name)
+            new_defaults.append(name)
 
         # Find options that have been deprecated in the new release.
         # If an option name is a key in the old_list dict, it means that it
@@ -208,7 +148,7 @@ def diff(old_list, new_list):
             if full_name in old_list.viewkeys():
                 deprecated_opts.append((full_name, name))
 
-    return new_opts, changed_default, deprecated_opts
+    return new_opts, new_defaults, deprecated_opts
 
 
 def format_option_name(name):
@@ -239,50 +179,37 @@ def release_from_branch(branch):
         return branch.replace('stable/', '').title()
 
 
-def generate_docbook(project, new_branch, old_list, new_list):
-    """Generate the diff between the 2 options lists for `project`."""
-    new_opts, changed_default, deprecated_opts = diff(old_list, new_list)
+def get_env(project, new_branch, old_list, new_list):
+    """Generate the jinja2 environment for the defined branch and project."""
+    new_opts, new_defaults, deprecated_opts = diff(old_list, new_list)
     release = release_from_branch(new_branch)
 
-    XMLNS = '{http://www.w3.org/XML/1998/namespace}'
-    DOCBOOKMAP = {None: "http://docbook.org/ns/docbook"}
-
-    section = etree.Element("section", nsmap=DOCBOOKMAP, version="5.0")
-    id = "%(project)s-conf-changes-%(release)s" % {'project': project,
-                                                   'release': release.lower()}
-    section.set(XMLNS + 'id', id)
-    section.append(etree.Comment(" Warning: Do not edit this file. It is "
-                                 "automatically generated and your changes "
-                                 "will be overwritten. The tool to do so "
-                                 "lives in the openstack-doc-tools "
-                                 "repository. "))
-    title = etree.Element("title")
-    title.text = ("New, updated, and deprecated options "
-                  "in %(release)s for %(project)s" %
-                  {'release': release,
-                   'project': CODENAME_TITLE[project]})
-    section.append(title)
+    env = {
+        'release': release,
+        'project': project,
+        'codename': CODENAME_TITLE[project],
+        'new_opts': [],
+        'new_defaults': [],
+        'deprecated_opts': []
+    }
 
     # New options
     if new_opts:
-        table = dbk_append_table(section, "New options", 2)
-        dbk_append_header(table, ["Option = default value",
-                                  "(Type) Help string"])
         for name in sorted(new_opts, _cmpopts):
             opt = new_list[name][1]
             name = format_option_name(name)
-            cells = ["%(name)s = %(default)s" % {'name': name,
-                                                 'default': opt['default']},
+            helptext = opt['help'].strip().replace('\n', ' ')
+            helptext = ' '.join(helptext.split())
+            cells = (("%(name)s = %(default)s" %
+                      {'name': name,
+                       'default': opt['default']}).strip(),
                      "(%(type)s) %(help)s" % {'type': opt['type'],
-                                              'help': opt['help']}]
-            dbk_append_row(table, cells)
+                                              'help': helptext})
+            env['new_opts'].append(cells)
 
-    # Updated default
-    if changed_default:
-        table = dbk_append_table(section, "New default values", 3)
-        dbk_append_header(table, ["Option", "Previous default value",
-                                  "New default value"])
-        for name in sorted(changed_default, _cmpopts):
+    # New defaults
+    if new_defaults:
+        for name in sorted(new_defaults, _cmpopts):
             old_default = old_list[name][1]['default']
             new_default = new_list[name][1]['default']
             if isinstance(old_default, list):
@@ -290,39 +217,32 @@ def generate_docbook(project, new_branch, old_list, new_list):
             if isinstance(new_default, list):
                 new_default = ", ".join(new_default)
             name = format_option_name(name)
-            cells = [name, old_default, new_default]
-            dbk_append_row(table, cells)
+            cells = (name, old_default, new_default)
+            env['new_defaults'].append(cells)
 
     # Deprecated options
     if deprecated_opts:
-        table = dbk_append_table(section, "Deprecated options", 2)
-        dbk_append_header(table, ["Deprecated option", "New Option"])
-        for deprecated, new in deprecated_opts:
+        for deprecated, new in sorted(deprecated_opts, cmp=_cmpopts,
+                                      key=lambda tup: tup[0]):
             deprecated = format_option_name(deprecated)
             new = format_option_name(new)
-            dbk_append_row(table, [deprecated, new])
+            env['deprecated_opts'].append((deprecated, new))
 
-    # No new, updated and deprecated options
-    if not new_opts and not changed_default and not deprecated_opts:
-        para = etree.Element("para")
-        para.text = ("There are no new, updated, and deprecated options "
-                     "in %(release)s for %(project)s." %
-                     {'release': release,
-                      'project': CODENAME_TITLE[project]})
-        section.append(para)
-
-    return etree.tostring(section, pretty_print=True, xml_declaration=True,
-                          encoding="UTF-8")
+    return env
 
 
 def main():
     parser = argparse.ArgumentParser(
         description='Generate a summary of configuration option changes.',
-        usage='%(prog)s <old_branch> <new_branch> [options]')
+        usage='%(prog)s [options] <old_branch> <new_branch> [projects]')
     parser.add_argument('old_branch',
                         help='Name of the old branch.')
     parser.add_argument('new_branch',
                         help='Name of the new branch.')
+    parser.add_argument('projects',
+                        help='List of projects to work on.',
+                        nargs='*',
+                        default=PROJECTS)
     parser.add_argument('-i', '--input',
                         dest='sources',
                         help='Path to a folder containing the git '
@@ -337,6 +257,13 @@ def main():
                         required=False,
                         default='.',
                         type=str,)
+    parser.add_argument('-f', '--format',
+                        dest='format',
+                        help='Output format (docbook or rst).',
+                        required=False,
+                        default='rst',
+                        type=str,
+                        choices=('docbook', 'rst'),)
     parser.add_argument('-n', '--no-venv-update',
                         dest='novenvupdate',
                         help='Don\'t update the virtual envs.',
@@ -345,27 +272,29 @@ def main():
                         default=False,)
     args = parser.parse_args()
 
-    # Blacklist trove if we diff between havana and icehouse: autohelp.py fails
-    # with trove on havana
-    if args.old_branch == "stable/havana":
-        PROJECTS.remove('trove')
+    setup_venv(args.projects, args.old_branch, args.novenvupdate)
+    setup_venv(args.projects, args.new_branch, args.novenvupdate)
 
-    setup_venv(args.old_branch, args.novenvupdate)
-    setup_venv(args.new_branch, args.novenvupdate)
-
-    for project in PROJECTS:
-        old_list = get_options(project, args.old_branch, args)
-        new_list = get_options(project, args.new_branch, args)
+    for project in args.projects:
+        old_list = get_options(project, args.old_branch)
+        new_list = get_options(project, args.new_branch)
 
         release = args.new_branch.replace('stable/', '')
-        xml = generate_docbook(project, release, old_list, new_list)
-        filename = ("%(project)s-conf-changes.xml" %
-                    {'project': project, 'release': release})
+        env = get_env(project, release, old_list, new_list)
+        ext = 'rst' if args.format == 'rst' else 'xml'
+        filename = ("%(project)s-conf-changes.%(ext)s" %
+                    {'project': project, 'ext': ext})
+        tmpl_file = 'templates/changes.%s.j2' % args.format
         if not os.path.exists(args.target):
             os.makedirs(args.target)
         dest = os.path.join(args.target, filename)
+
+        with open(tmpl_file) as fd:
+            template = jinja2.Template(fd.read(), trim_blocks=True)
+            output = template.render(**env)
+
         with open(dest, 'w') as fd:
-            fd.write(xml)
+            fd.write(output)
 
     return 0
 

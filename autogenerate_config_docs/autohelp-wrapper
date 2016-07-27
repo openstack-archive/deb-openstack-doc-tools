@@ -17,24 +17,27 @@ HERE=$(pwd)
 VENVDIR=$HERE/venv
 SOURCESDIR=$HERE/sources
 MANUALSREPO=$SOURCESDIR/openstack-manuals
+MAPPINGS_DIR=$MANUALSREPO/tools/autogenerate-config-flagmappings
 AUTOHELP="python $HERE/autohelp.py"
 EXTRACT_SWIFT="python $HERE/extract_swift_flags.py"
 GITBASE=git://git.openstack.org/openstack
 GITPROJ=git://git.openstack.org/openstack
-PROJECTS="ceilometer cinder glance heat ironic keystone neutron nova sahara swift trove"
-MANUALS_PROJECTS="openstack-manuals oslo-incubator"
+PROJECTS="aodh ceilometer cinder glance heat ironic keystone manila \
+            neutron nova sahara swift trove zaqar"
+MANUALS_PROJECTS="openstack-manuals"
 BRANCH=master
 FAST=0
+QUIET=0
 
 usage() {
     echo "Wrapper for autohelp.py"
     echo "Usage:"
-    echo "  $(basename $0) [ OPTIONS ] update|docbook|setup [ project1 ... ]"
+    echo "  $(basename $0) [ OPTIONS ] update|docbook|rst|setup [ project... ]"
     echo
     echo "Subcommands:"
-    echo "  create:     Create an initial flagmapping file"
-    echo "  update:     Update the flagmapping files"
-    echo "  docbook:    Generate the options tables"
+    echo "  update:     Update or create the flagmapping files"
+    echo "  docbook:    Generate the options tables in docbook format"
+    echo "  rst:        Generate the options tables in RST format"
     echo "  setup:      Install the environment only"
     echo
     echo "Options:"
@@ -44,6 +47,8 @@ usage() {
     echo "  -c:         Recreate the virtual environment"
     echo "  -f:         Work offline: Do not change environment or sources"
     echo "  -e PATH:    Create the virtualenv in PATH"
+    echo "  -v LEVEL:   Verbose message (1 or 2)"
+    echo "              (check various python modules imported or not)"
 }
 
 setup_venv() {
@@ -60,7 +65,7 @@ activate_venv() {
     project=$1
 
     . $VENVDIR/$project/bin/activate
-    pip install --upgrade pip
+    pip install --upgrade pip setuptools
 }
 
 get_project() {
@@ -73,10 +78,10 @@ get_project() {
         fi
         git clone $git_url/$project $SOURCESDIR/$project
 
-        if [ -e extra_repos/$project-$RELEASE ]; then
+        if [ -e $MAPPINGS_DIR/$project.extra_repos ]; then
             while read extra; do
                 git clone $git_url/$extra $SOURCESDIR/$extra
-            done < extra_repos/$project-$RELEASE
+            done < $MAPPINGS_DIR/$project.extra_repos
         fi
 
     else
@@ -84,20 +89,19 @@ get_project() {
             (cd $SOURCESDIR/$project && git pull)
         fi
 
-        if [ -e extra_repos/$project-$RELEASE ]; then
+        if [ -e $MAPPINGS_DIR/$project.extra_repos ]; then
             while read extra; do
                 (cd $SOURCESDIR/$extra && git pull)
-            done < extra_repos/$project-$RELEASE
+            done < $MAPPINGS_DIR/$project.extra_repos
         fi
     fi
 }
 
 setup_tools() {
-    (cd $SOURCESDIR/oslo-incubator && python setup.py install)
     pip install -rrequirements.txt
 }
 
-while getopts :b:g:e:cf opt; do
+while getopts :b:g:e:v:cfq opt; do
     case $opt in
     b)
         BRANCH=$OPTARG
@@ -113,6 +117,15 @@ while getopts :b:g:e:cf opt; do
         ;;
     f)
         FAST=1
+        ;;
+    q)
+        QUIET=1
+        ;;
+    v)
+        AUTOOPT="-v"
+        if [ $OPTARG = 2 ]; then
+            AUTOOPT="-vv"
+        fi
         ;;
     \?)
         usage
@@ -130,8 +143,13 @@ fi
 ACTION=$1
 shift
 
+if [ $QUIET -eq 1 ]; then
+    exec 3>&1 >/dev/null
+    exec 4>&2 2>/dev/null
+fi
+
 case $ACTION in
-    create|update|docbook|setup) ;;
+    update|docbook|rst|dump|setup) ;;
     *)
         usage
         exit 1
@@ -148,39 +166,43 @@ fi
 RELEASE=$(echo $BRANCH | sed 's,^stable.,,')
 
 if [ "$FAST" -eq 0 ] ; then
-    get_project oslo-incubator
     get_project openstack-manuals
 
     for project in $PROJECTS; do
         setup_venv $project
         setup_tools
-        if [ -e requirements/$project-$RELEASE.txt ]; then
-            pip install -r requirements/$project-$RELEASE.txt \
+        if [ -e $MAPPINGS_DIR/$project.requirements ]; then
+            pip install -r $MAPPINGS_DIR/$project.requirements \
                 --allow-all-external
         fi
         get_project $project
 
         (
-            cd $SOURCESDIR/$project
-            find $project -name "*.pyc" -delete
+            pushd $SOURCESDIR/$project
+            module=$(echo $project | tr - _ )
+            find $module -name "*.pyc" -delete
             GIT_CMD="git show-ref --verify --quiet refs/heads/$BRANCH"
             if $GIT_CMD; then
                 git checkout $BRANCH
             else
                 git checkout -b $BRANCH remotes/origin/$BRANCH
             fi
-            pip install -rrequirements.txt -rtest-requirements.txt
+            pip install -rrequirements.txt
+            [ -e "test-requirements.txt" ] && \
+                pip install -rtest-requirements.txt
             python setup.py install
+            popd
 
-            if [ -e extra_repos/$project-$RELEASE ]; then
+            if [ -e $MAPPINGS_DIR/$project.extra_repos ]; then
                 while read extra; do
                     (
                         cd $SOURCESDIR/$extra
-                        pip install -rrequirements.txt \
-                            -rtest-requirements.txt
+                        pip install -rrequirements.txt
+                        [ -e "test-requirements.txt" ] && \
+                            pip install -rtest-requirements.txt
                         python setup.py install
                     )
-                done < extra_repos/$project-$RELEASE
+                done < $MAPPINGS_DIR/$project.extra_repos
             fi
         )
     done
@@ -193,36 +215,66 @@ for project in $PROJECTS; do
         break
     fi
 
-    if [ -e extra_repos/$project-$RELEASE ]; then
+    if [ -e $MAPPINGS_DIR/$project.extra_repos ]; then
         extra_flags=
         while read extra; do
             package=$(echo $extra | tr - _)
+            if [ $package = "networking_midonet" ]; then
+                package="midonet"
+            fi
+            if [ $package = "networking_hyperv" ]; then
+                package="hyperv"
+            fi
+            if [ $package = "networking_edge_vpn" ]; then
+                package="networking-edge-vpn"
+            fi
+            if [ $package = "networking_zvm" ]; then
+                package="neutron"
+                cp -r $SOURCESDIR/networking-zvm/neutron/plugins/zvm \
+                    $SOURCESDIR/neutron/neutron/plugins
+                cp -r \
+                    $SOURCESDIR/networking-zvm/neutron/plugins/ml2/drivers/zvm\
+                    $SOURCESDIR/neutron/neutron/plugins/ml2/drivers
+            fi
             extra_flags="$extra_flags -i $SOURCESDIR/$extra/$package"
-        done < extra_repos/$project-$RELEASE
+        done < $MAPPINGS_DIR/$project.extra_repos
     fi
 
-    cd $MANUALSREPO/tools/autogenerate-config-flagmappings
+    cd $MAPPINGS_DIR
 
     case $ACTION in
-    create)
-        [ "$project" = "swift" ] && continue
-        file=$MANUALSREPO/tools/autogenerate-config-flagmappings/$project.flagmappings
-        if [ -e $file ]; then
-            echo "$project.flagmappings already exists, ignoring."
-            continue
-        fi
-        $AUTOHELP create $project -i $SOURCESDIR/$project/$project
-        ;;
     update)
         [ "$project" = "swift" ] && continue
-        $AUTOHELP update $project -i $SOURCESDIR/$project/$project $extra_flags
+        $AUTOHELP update $project -i $SOURCESDIR/$project/$project \
+            $extra_flags $AUTOOPT
         mv $project.flagmappings.new $project.flagmappings
         ;;
     docbook)
         if [ "$project" = "swift" ]; then
             $EXTRACT_SWIFT docbook -m $MANUALSREPO -s $SOURCESDIR/swift
         else
-            $AUTOHELP docbook $project -i $SOURCESDIR/$project/$project $extra_flags
+            $AUTOHELP docbook $project -i $SOURCESDIR/$project/$project \
+                $extra_flags $AUTOOPT
+        fi
+        ;;
+    rst)
+        if [ "$project" = "swift" ]; then
+            $EXTRACT_SWIFT rst -m $MANUALSREPO -s $SOURCESDIR/swift
+        else
+            $AUTOHELP rst $project -i $SOURCESDIR/$project/$project \
+                $extra_flags $AUTOOPT
+        fi
+        ;;
+    dump)
+        if [ $QUIET -eq 1 ]; then
+            exec 1>&3
+            exec 2>&4
+        fi
+        if [ "$project" = "swift" ]; then
+            $EXTRACT_SWIFT dump -m $MANUALSREPO -s $SOURCESDIR/swift
+        else
+            $AUTOHELP dump $project -i $SOURCESDIR/$project/$project \
+                $extra_flags $AUTOOPT
         fi
         ;;
     esac

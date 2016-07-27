@@ -1,6 +1,17 @@
 Release notes
 =============
 
+Note that this file is now obsolete, we use reno for release note
+management. Add notes to releasenotes/notes directory following the
+documentation in
+http://docs.openstack.org/developer/reno/usage.html#creating-new-release-notes.
+
+0.32.0
+------
+
+* Removed a virtual build and test environment based on Vagrant.
+* Update ``autohelp-wrapper`` to support RST output.
+
 0.31.0
 ------
 

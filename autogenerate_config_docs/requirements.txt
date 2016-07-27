@@ -1,4 +1,5 @@
-GitPython>=0.3.2.RC1
+docutils
+jinja2
 lxml
 oslo.config
 oslo.i18n

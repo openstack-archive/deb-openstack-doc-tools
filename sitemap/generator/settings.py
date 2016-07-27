@@ -12,9 +12,6 @@
 
 # Configuration variables used inside Scrapy to enable modules/pipelines
 # and to affect the behavior of several parts.
-#
-# All available configuration variables are documente at
-# http://doc.scrapy.org/en/latest/topics/settings.html.
 
 from scrapy import linkextractors
 
@@ -31,5 +28,6 @@ DOWNLOAD_WARNSIZE = 67108864
 LOG_LEVEL = 'INFO'
 LOGGING_ENABLED = True
 RANDOMIZE_DOWNLOAD_DELAY = False
+ROBOTSTXT_OBEY = True
 TELNETCONSOLE_ENABLED = False
 linkextractors.IGNORED_EXTENSIONS.remove('pdf')
