@@ -29,8 +29,8 @@ Build-Depends-Indep: libxml2-dev,
                      python-yaml,
 Standards-Version: 3.9.8
 Homepage: https://github.com/openstack/openstack-doc-tools
-Vcs-Git: git://anonscm.debian.org/openstack/openstack-doc-tools.git
-Vcs-Browser: http://anonscm.debian.org/gitweb/?p=openstack/openstack-doc-tools.git;a=summary
+Vcs-Git: https://anonscm.debian.org/git/openstack/openstack-doc-tools.git
+Vcs-Browser: https://anonscm.debian.org/cgit/openstack/openstack-doc-tools.git
 
 Package: python-openstack-doc-tools
 Architecture: all

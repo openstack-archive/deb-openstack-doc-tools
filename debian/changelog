@@ -5,6 +5,7 @@ openstack-doc-tools (0.34.0-1) experimental; urgency=medium
   * Using pkgos-dh_auto_install instead of manual stuff.
   * Bring the use of update-alternatives up-to-date with what's shipped.
   * Standards-Version: 3.9.8 (no change).
+  * Using https for URLs.
 
  -- Thomas Goirand <zigo@debian.org>  Wed, 27 Jul 2016 08:53:42 +0000
 

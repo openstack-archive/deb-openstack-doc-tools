@@ -1,6 +1,6 @@
 Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: openstack-doc-tools
-Source: git://github.com/openstack/openstack-doc-tools.git
+Source: https://github.com/openstack/openstack-doc-tools.git
 
 Files: *
 Copyright: (c) 2013-2014, The OpenStack foundation
