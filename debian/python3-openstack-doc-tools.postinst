@@ -3,20 +3,21 @@
 set -e
 
 if [ "$1" = "configure" ] ; then
+	update-alternatives --install /usr/bin/doc-tools-build-rst doc-tools-build-rst /usr/bin/python3-doc-tools-build-rst 200
 	update-alternatives --install /usr/bin/doc-tools-check-languages doc-tools-check-languages /usr/bin/python3-doc-tools-check-languages 200
 	update-alternatives --install /usr/bin/doc-tools-update-cli-reference doc-tools-update-cli-reference /usr/bin/python3-doc-tools-update-cli-reference 200
 	update-alternatives --install /usr/bin/openstack-auto-commands openstack-auto-commands /usr/bin/python3-openstack-auto-commands 200
-	update-alternatives --install /usr/bin/openstack-autohelp openstack-autohelp /usr/bin/python3-openstack-autohelp 200
 	update-alternatives --install /usr/bin/openstack-doc-test openstack-doc-test /usr/bin/python3-openstack-doc-test 200
 	update-alternatives --install /usr/bin/openstack-generate-docbook openstack-generate-docbook /usr/bin/python3-openstack-generate-docbook 200
 	update-alternatives --install /usr/bin/openstack-generate-pot openstack-generate-pot /usr/bin/python3-openstack-generate-pot 200
+	update-alternatives --install /usr/bin/openstack-indexpage openstack-indexpage /usr/bin/python3-openstack-indexpage 200
 	update-alternatives --install /usr/bin/openstack-jsoncheck openstack-jsoncheck /usr/bin/python3-openstack-jsoncheck 200
-	update-alternatives --install /usr/bin/doc-tools-build-rst doc-tools-build-rst /usr/bin/python3-doc-tools-build-rst 200
+
 	for i in /usr/share/openstack-doc-tools/cleanup/python3-*.py  /usr/share/openstack-doc-tools/cleanup/retf/python3-*.py ; do
 		FILENAME=`basename $i | sed s/python3-//`
 		DIRNAME=`dirname $i`
 		update-alternatives --install $DIRNAME/$FILENAME openstack-doc-tools-$FILENAME $i 200
-        done
+	done
 fi
 
 #DEBHELPER#

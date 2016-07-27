@@ -3,19 +3,19 @@
 set -e
 
 if [ "$1" = "remove" ] ; then
+	update-alternatives --remove doc-tools-build-rst /usr/bin/python3-doc-tools-build-rst
 	update-alternatives --remove doc-tools-check-languages /usr/bin/python3-doc-tools-check-languages
 	update-alternatives --remove doc-tools-update-cli-reference /usr/bin/python3-doc-tools-update-cli-reference
 	update-alternatives --remove openstack-auto-commands /usr/bin/python3-openstack-auto-commands
-	update-alternatives --remove openstack-autohelp /usr/bin/python3-openstack-autohelp
 	update-alternatives --remove openstack-doc-test /usr/bin/python3-openstack-doc-test
 	update-alternatives --remove openstack-generate-docbook /usr/bin/python3-openstack-generate-docbook
 	update-alternatives --remove openstack-generate-pot /usr/bin/python3-openstack-generate-pot
+	update-alternatives --remove openstack-indexpage /usr/bin/python3-openstack-indexpage
 	update-alternatives --remove openstack-jsoncheck /usr/bin/python3-openstack-jsoncheck
-	update-alternatives --remove doc-tools-build-rst /usr/bin/python3-doc-tools-build-rst
 
-        update-alternatives --remove openstack-doc-tools-prettify.py			/usr/share/openstack-doc-tools/cleanup/python3-prettify.py
-        update-alternatives --remove openstack-doc-tools-remove_unnecessary_spaces.py	/usr/share/openstack-doc-tools/cleanup/python3-remove_unnecessary_spaces.py
-        update-alternatives --remove openstack-doc-tools-retf.py			/usr/share/openstack-doc-tools/cleanup/retf/python3-retf.py   
+	update-alternatives --remove openstack-doc-tools-prettify.py			/usr/share/openstack-doc-tools/cleanup/python3-prettify.py
+	update-alternatives --remove openstack-doc-tools-remove_unnecessary_spaces.py	/usr/share/openstack-doc-tools/cleanup/python3-remove_unnecessary_spaces.py
+	update-alternatives --remove openstack-doc-tools-retf.py			/usr/share/openstack-doc-tools/cleanup/retf/python3-retf.py
 fi
 
 #DEBHELPER#
