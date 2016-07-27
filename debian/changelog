@@ -2,6 +2,7 @@ openstack-doc-tools (0.34.0-1) experimental; urgency=medium
 
   * New upstream release.
   * Fixed (build-)depends for this release.
+  * Using pkgos-dh_auto_install instead of manual stuff.
 
  -- Thomas Goirand <zigo@debian.org>  Wed, 27 Jul 2016 08:53:42 +0000
 

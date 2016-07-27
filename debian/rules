@@ -1,12 +1,7 @@
 #!/usr/bin/make -f
 
-PYTHONS:=$(shell pyversions -vr)
-PYTHON3S:=$(shell py3versions -vr)
-
 UPSTREAM_GIT = https://github.com/openstack/openstack-doc-tools.git
 include /usr/share/openstack-pkg-tools/pkgos.make
-
-export OSLO_PACKAGE_VERSION=$(VERSION)
 
 export LAST_CHANGE=$(shell dpkg-parsechangelog -S Date)
 export BUILD_DATE=$(shell LC_ALL=C date -u "+%B %d, %Y" -d "$(LAST_CHANGE)")
@@ -19,33 +14,7 @@ override_dh_clean:
 	rm -rf doc/build
 
 override_dh_auto_install:
-	set -e ; for pyvers in $(PYTHONS); do \
-		python$$pyvers setup.py install --install-layout=deb \
-			--root $(CURDIR)/debian/python-openstack-doc-tools; \
-	done
-	set -e ; for pyvers in $(PYTHON3S); do \
-		python$$pyvers setup.py install --install-layout=deb \
-			--root $(CURDIR)/debian/python3-openstack-doc-tools; \
-	done
-	rm -f $(CURDIR)/debian/python*/usr/lib/python*/dist-packages/*.pth
-	mv $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/doc-tools-check-languages $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/python2-doc-tools-check-languages
-	mv $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/doc-tools-check-languages $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/python3-doc-tools-check-languages
-	mv $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/doc-tools-update-cli-reference $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/python2-doc-tools-update-cli-reference
-	mv $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/doc-tools-update-cli-reference $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/python3-doc-tools-update-cli-reference
-	mv $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/openstack-auto-commands $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/python2-openstack-auto-commands
-	mv $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/openstack-auto-commands $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/python3-openstack-auto-commands
-	mv $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/openstack-autohelp $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/python2-openstack-autohelp
-	mv $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/openstack-autohelp $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/python3-openstack-autohelp
-	mv $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/openstack-doc-test $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/python2-openstack-doc-test
-	mv $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/openstack-doc-test $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/python3-openstack-doc-test
-	mv $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/openstack-generate-docbook $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/python2-openstack-generate-docbook
-	mv $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/openstack-generate-docbook $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/python3-openstack-generate-docbook
-	mv $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/openstack-generate-pot $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/python2-openstack-generate-pot
-	mv $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/openstack-generate-pot $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/python3-openstack-generate-pot
-	mv $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/openstack-jsoncheck $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/python2-openstack-jsoncheck
-	mv $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/openstack-jsoncheck $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/python3-openstack-jsoncheck
-	mv $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/doc-tools-build-rst $(CURDIR)/debian/python-openstack-doc-tools/usr/bin/python2-doc-tools-build-rst
-	mv $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/doc-tools-build-rst $(CURDIR)/debian/python3-openstack-doc-tools/usr/bin/python3-doc-tools-build-rst
+	pkgos-dh_auto_install
 
 	# Move the cleanup and sitemap to the openstack-doc-tools-common package
 	mkdir -p $(CURDIR)/debian/openstack-doc-tools-common/usr/share/openstack-doc-tools
