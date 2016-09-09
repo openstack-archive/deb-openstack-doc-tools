@@ -1,0 +1,9 @@
+Code-Review+2: Andreas Jaeger <jaegerandi@gmail.com>
+Code-Review+2: KATO Tomoyuki <kato.tomoyuki@jp.fujitsu.com>
+Workflow+1: KATO Tomoyuki <kato.tomoyuki@jp.fujitsu.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Wed, 03 Aug 2016 14:40:43 +0000
+Reviewed-on: https://review.openstack.org/284122
+Project: openstack/deb-openstack-doc-tools
+Branch: refs/heads/master

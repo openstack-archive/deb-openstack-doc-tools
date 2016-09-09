@@ -1,0 +1,10 @@
+Code-Review+2: Tom Fifield <tom@openstack.org>
+Code-Review+2: KATO Tomoyuki <kato.tomoyuki@jp.fujitsu.com>
+Code-Review+2: Christian Berendt <berendt@betacloud-solutions.de>
+Workflow+1: Christian Berendt <berendt@betacloud-solutions.de>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Sun, 22 May 2016 17:44:30 +0000
+Reviewed-on: https://review.openstack.org/311730
+Project: openstack/deb-openstack-doc-tools
+Branch: refs/heads/master

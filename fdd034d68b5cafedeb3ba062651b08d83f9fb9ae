@@ -1,0 +1,10 @@
+Code-Review+2: Andreas Jaeger <jaegerandi@gmail.com>
+Code-Review+1: venkatamahesh <Venkata.Kotha@infinite.com>
+Code-Review+2: KATO Tomoyuki <kato.tomoyuki@jp.fujitsu.com>
+Workflow+1: KATO Tomoyuki <kato.tomoyuki@jp.fujitsu.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Tue, 30 Aug 2016 02:34:01 +0000
+Reviewed-on: https://review.openstack.org/360607
+Project: openstack/deb-openstack-doc-tools
+Branch: refs/heads/master

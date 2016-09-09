@@ -1,0 +1,10 @@
+Code-Review+1: Markus Zoeller (markus_z) <mzoeller@linux.vnet.ibm.com>
+Code-Review+2: Andreas Jaeger <jaegerandi@gmail.com>
+Code-Review+2: Tom Fifield <tom@openstack.org>
+Workflow+1: Andreas Jaeger <jaegerandi@gmail.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Thu, 09 Jun 2016 04:54:05 +0000
+Reviewed-on: https://review.openstack.org/315608
+Project: openstack/deb-openstack-doc-tools
+Branch: refs/heads/master

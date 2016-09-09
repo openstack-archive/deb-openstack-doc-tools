@@ -1,0 +1,10 @@
+Code-Review+1: zhangguoqing <zhang.guoqing@99cloud.net>
+Code-Review+2: Christian Berendt <berendt@betacloud-solutions.de>
+Code-Review+2: Tom Fifield <tom@openstack.org>
+Workflow+1: Tom Fifield <tom@openstack.org>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Mon, 30 May 2016 01:11:44 +0000
+Reviewed-on: https://review.openstack.org/322458
+Project: openstack/deb-openstack-doc-tools
+Branch: refs/heads/master

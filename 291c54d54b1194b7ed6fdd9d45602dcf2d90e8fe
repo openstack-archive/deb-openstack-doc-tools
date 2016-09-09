@@ -1,0 +1,9 @@
+Code-Review+2: Tom Fifield <tom@openstack.org>
+Code-Review+2: KATO Tomoyuki <kato.tomoyuki@jp.fujitsu.com>
+Workflow+1: KATO Tomoyuki <kato.tomoyuki@jp.fujitsu.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Thu, 04 Aug 2016 04:10:09 +0000
+Reviewed-on: https://review.openstack.org/350904
+Project: openstack/deb-openstack-doc-tools
+Branch: refs/heads/master

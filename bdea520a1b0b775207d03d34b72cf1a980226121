@@ -1,0 +1,9 @@
+Code-Review+2: Andreas Jaeger <jaegerandi@gmail.com>
+Code-Review+2: Atsushi SAKAI <sakaia@jp.fujitsu.com>
+Workflow+1: Andreas Jaeger <jaegerandi@gmail.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Fri, 25 Mar 2016 15:48:26 +0000
+Reviewed-on: https://review.openstack.org/297494
+Project: openstack/deb-openstack-doc-tools
+Branch: refs/heads/master
