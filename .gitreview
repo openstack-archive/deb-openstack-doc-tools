@@ -1,4 +1,5 @@
 [gerrit]
 host=review.openstack.org
 port=29418
-project=openstack/openstack-doc-tools.git
+project=openstack/deb-openstack-doc-tools.git
+defaultbranch=debian/newton
