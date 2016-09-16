@@ -1,0 +1,9 @@
+Code-Review+2: Christian Berendt <berendt@betacloud-solutions.de>
+Code-Review+2: Andreas Jaeger <jaegerandi@gmail.com>
+Workflow+1: Andreas Jaeger <jaegerandi@gmail.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Fri, 16 Sep 2016 15:11:20 +0000
+Reviewed-on: https://review.openstack.org/371316
+Project: openstack/deb-openstack-doc-tools
+Branch: refs/heads/master
