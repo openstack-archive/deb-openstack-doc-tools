@@ -1,0 +1,10 @@
+Code-Review+1: Nicolas Bock <nicolasbock@gmail.com>
+Code-Review+2: KATO Tomoyuki <kato.tomoyuki@jp.fujitsu.com>
+Code-Review+1: Brian Moss <kallimachos@gmail.com>
+Workflow+1: Andreas Jaeger <jaegerandi@gmail.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Mon, 21 Nov 2016 07:25:16 +0000
+Reviewed-on: https://review.openstack.org/399738
+Project: openstack/deb-openstack-doc-tools
+Branch: refs/heads/master
