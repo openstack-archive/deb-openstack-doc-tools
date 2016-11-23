@@ -1,3 +1,9 @@
+openstack-doc-tools (0.34.0-3) UNRELEASED; urgency=medium
+
+  * Bumped debhelper compat version to 10
+
+ -- Ondřej Nový <onovy@debian.org>  Thu, 24 Nov 2016 00:01:54 +0100
+
 openstack-doc-tools (0.34.0-2) unstable; urgency=medium
 
   [ Ondřej Nový ]
