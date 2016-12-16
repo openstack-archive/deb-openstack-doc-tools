@@ -1,0 +1,10 @@
+Code-Review+2: Andreas Jaeger <jaegerandi@gmail.com>
+Code-Review+1: Brian Moss <kallimachos@gmail.com>
+Code-Review+2: Darren Chan <dazzachan@yahoo.com.au>
+Workflow+1: Darren Chan <dazzachan@yahoo.com.au>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Fri, 16 Dec 2016 06:27:31 +0000
+Reviewed-on: https://review.openstack.org/409600
+Project: openstack/deb-openstack-doc-tools
+Branch: refs/heads/master
