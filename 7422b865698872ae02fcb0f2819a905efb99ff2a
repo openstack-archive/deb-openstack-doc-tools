@@ -1,0 +1,9 @@
+Code-Review+2: KATO Tomoyuki <kato.tomoyuki@jp.fujitsu.com>
+Code-Review+2: Alexandra Settle <a.settle@outlook.com>
+Workflow+1: Alexandra Settle <a.settle@outlook.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Fri, 13 Jan 2017 11:40:13 +0000
+Reviewed-on: https://review.openstack.org/418951
+Project: openstack/deb-openstack-doc-tools
+Branch: refs/heads/master
