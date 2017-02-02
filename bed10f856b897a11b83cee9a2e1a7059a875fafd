@@ -1,0 +1,9 @@
+Code-Review+2: Alexandra Settle <a.settle@outlook.com>
+Code-Review+2: Andreas Jaeger <jaegerandi@gmail.com>
+Workflow+1: Andreas Jaeger <jaegerandi@gmail.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Wed, 01 Feb 2017 15:51:36 +0000
+Reviewed-on: https://review.openstack.org/427698
+Project: openstack/deb-openstack-doc-tools
+Branch: refs/heads/master
