@@ -1,0 +1,10 @@
+Code-Review+2: Andreas Jaeger <jaegerandi@gmail.com>
+Code-Review+1: Brian Moss <kallimachos@gmail.com>
+Code-Review+2: Tom Fifield <tom@openstack.org>
+Workflow+1: Tom Fifield <tom@openstack.org>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Wed, 08 Mar 2017 07:47:44 +0000
+Reviewed-on: https://review.openstack.org/433688
+Project: openstack/deb-openstack-doc-tools
+Branch: refs/heads/master

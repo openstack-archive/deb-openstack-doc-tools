@@ -1,0 +1,9 @@
+Code-Review+2: Andreas Jaeger <jaegerandi@gmail.com>
+Code-Review+2: chen.xing <chason.chan@foxmail.com>
+Workflow+1: chen.xing <chason.chan@foxmail.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Tue, 14 Mar 2017 16:04:50 +0000
+Reviewed-on: https://review.openstack.org/444895
+Project: openstack/deb-openstack-doc-tools
+Branch: refs/heads/master
