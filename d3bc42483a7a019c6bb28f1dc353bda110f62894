@@ -1,0 +1,9 @@
+Code-Review+2: Anne Gentle <annegentle@justwriteclick.com>
+Code-Review+2: Andreas Jaeger <jaegerandi@gmail.com>
+Workflow+1: Andreas Jaeger <jaegerandi@gmail.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Sun, 30 Apr 2017 05:42:32 +0000
+Reviewed-on: https://review.openstack.org/453976
+Project: openstack/deb-openstack-doc-tools
+Branch: refs/heads/master
