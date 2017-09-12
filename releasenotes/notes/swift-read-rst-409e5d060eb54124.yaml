@@ -1,3 +1,0 @@
----
-other:
-  - extract_swift_flags.py now reads the options help strings from RST tables.

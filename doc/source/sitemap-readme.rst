@@ -1,1 +1,0 @@
-.. include:: ../../sitemap/README.rst
